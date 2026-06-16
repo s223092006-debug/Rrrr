@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Guts & Blackpowder - Mobile & iPad Edition</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles to prevent text-selection and double-tap zoom on iPad */
+        body {
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        canvas {
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body class="bg-stone-950 text-white font-mono flex flex-col items-center justify-between min-h-screen p-2 md:p-6 overflow-hidden">
+
+    <!-- Main Game Frame -->
+    <div class="relative w-full max-w-4xl bg-stone-900 rounded-xl border border-red-950 shadow-2xl flex flex-col overflow-hidden">
+        
+        <!-- Top HUD Panel -->
+        <div class="w-full bg-stone-950/80 backdrop-blur-md p-3 border-b border-red-950 flex justify-between items-center z-10 text-xs md:text-sm">
+            <div class="flex flex-col gap-1">
+                <div class="font-bold text-red-500">Regiment: <span id="class-display" class="text-white">-</span></div>
+                <div class="flex items-center gap-2">
+                    <span class="font-bold">HP:</span>
+                    <div class="w-24 md:w-32 bg-stone-800 rounded-full h-3 overflow-hidden border border-stone-700">
+                        <div id="hp-bar" class="bg-red-600 h-full transition-all duration-100" style="width: 100%;"></div>
+                    </div>
+                    <span id="hp-display" class="font-bold">100%</span>
+                </div>
+            </div>
+            
+            <div class="flex flex-col items-end gap-1">
+                <div class="font-bold text-amber-500">Wave <span id="wave-display" class="text-white text-base">1</span></div>
+                <div class="text-[10px] md:text-xs text-stone-400">Zombies Left: <span id="zombies-display" class="text-white font-bold">0</span></div>
+            </div>
+        </div>
+
+        <!-- Interactive Canvas Area -->
+        <div class="relative w-full aspect-[2/1] bg-sky-950">
+            <canvas id="gameCanvas" width="800" height="400" class="w-full h-full block"></canvas>
+            
+            <!-- Gun/Ability HUD Overlay inside Canvas -->
+            <div class="absolute bottom-4 left-4 right-4 flex justify-between items-end pointer-events-none z-10">
+                <!-- Weapon Status Card -->
+                <div class="bg-black/60 border border-stone-800 p-2 rounded text-xs backdrop-blur-sm">
+                    <div class="text-stone-400">Weapon Status:</div>
+                    <div id="ammo-display" class="font-bold text-green-400">Ready</div>
+                </div>
+                <!-- Active Ability Status Card -->
+                <div id="ability-ui" class="bg-black/60 border border-stone-800 p-2 rounded text-xs backdrop-blur-sm hidden">
+                    <div class="text-stone-400">Ability [SHIFT]:</div>
+                    <div id="ability-display" class="font-bold text-amber-400">Ready</div>
+                </div>
+            </div>
+
+            <!-- Menu Screen / Class Selection -->
+            <div id="menu-screen" class="absolute inset-0 bg-stone-950/95 flex flex-col items-center justify-center p-4 z-20 overflow-y-auto">
+                <h1 class="text-xl md:text-3xl font-black text-red-600 tracking-wider mb-2 text-center drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] animate-pulse">
+                    GUTS &amp; BLACKPOWDER
+                </h1>
+                <p class="text-[10px] md:text-xs text-stone-400 mb-4 text-center max-w-md">
+                    Select a Napoleonic regiment role to defend the barricade against the undead. Touch controls ready!
+                </p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5 w-full max-w-2xl px-2">
+                    <button onclick="selectClass('line')" class="group flex flex-col items-start bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-red-800 p-2.5 rounded-lg transition-all text-left">
+                        <span class="text-xs md:text-sm font-bold text-red-500 group-hover:text-red-400">Line Infantry</span>
+                        <span class="text-[9px] md:text-xs text-stone-300 mt-1">Weapons: Heavy Musket &amp; Sabre. Long range, ultimate stopping power.</span>
+                    </button>
+                    
+                    <button onclick="selectClass('officer')" class="group flex flex-col items-start bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-red-800 p-2.5 rounded-lg transition-all text-left">
+                        <span class="text-xs md:text-sm font-bold text-red-500 group-hover:text-red-400">Officer</span>
+                        <span class="text-[9px] md:text-xs text-stone-300 mt-1">Weapons: Flintlock Pistol &amp; Sword. Ability: Inspires Troops [Speed buff].</span>
+                    </button>
+                    
+                    <button onclick="selectClass('sapper')" class="group flex flex-col items-start bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-red-800 p-2.5 rounded-lg transition-all text-left">
+                        <span class="text-xs md:text-sm font-bold text-red-500 group-hover:text-red-400">Sapper</span>
+                        <span class="text-[9px] md:text-xs text-stone-300 mt-1">Weapons: Heavy Axe. Ability: Deploys Wooden Barricades.</span>
+                    </button>
+                    
+                    <button onclick="selectClass('medic')" class="group flex flex-col items-start bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-red-800 p-2.5 rounded-lg transition-all text-left">
+                        <span class="text-xs md:text-sm font-bold text-red-500 group-hover:text-red-400">Medic</span>
+                        <span class="text-[9px] md:text-xs text-stone-300 mt-1">Weapons: Surgeon's Sabre. Passive: Heals health when not in combat.</span>
+                    </button>
+                    
+                    <button onclick="selectClass('cuirassier')" class="group flex flex-col md:col-span-2 items-start bg-stone-900 hover:bg-stone-850 border border-amber-900/60 hover:border-amber-600 p-2.5 rounded-lg transition-all text-left">
+                        <span class="text-xs md:text-sm font-bold text-amber-500 group-hover:text-amber-400">Cuirassier</span>
+                        <span class="text-[9px] md:text-xs text-stone-300 mt-1">Weapons: Heavy Pallasch Sword. Passive: 25% damage reduction. Ability: Cavalry Charge [Dash & Knockback].</span>
+                    </button>
+                </div>
+                
+                <p class="text-[9px] text-stone-500 mt-3 text-center">Tap any class to enlist and launch the game.</p>
+            </div>
+
+            <!-- Game Over Screen -->
+            <div id="game-over" class="hidden absolute inset-0 bg-black/90 flex flex-col items-center justify-center p-4 z-20">
+                <h1 class="text-3xl md:text-5xl font-black text-red-700 tracking-widest animate-pulse mb-2">YOU PERISHED</h1>
+                <p class="text-xs md:text-sm text-stone-400 mb-6 text-center max-w-sm">The regiment was overwhelmed by the horde.</p>
+                <div class="bg-stone-900 border border-stone-800 p-4 rounded-lg w-full max-w-xs text-center mb-6 text-xs">
+                    <div class="text-stone-400">Waves Survived</div>
+                    <div id="final-wave" class="text-3xl font-black text-red-500 mt-1">0</div>
+                </div>
+                <button onclick="backToMenu()" class="px-6 py-3 bg-red-800 hover:bg-red-700 active:scale-95 text-sm font-bold tracking-wider rounded-lg border border-red-600 transition-all">
+                    Return to Menu
+                </button>
+            </div>
+        </div>
+
+        <!-- On-Screen iPad & Mobile Touch Controller Layout -->
+        <div class="w-full bg-stone-950 p-4 flex justify-between items-center gap-4 border-t border-stone-900 select-none">
+            <!-- Left Side: Movement D-PAD -->
+            <div class="flex items-center gap-3">
+                <button id="btn-left" class="w-16 h-16 md:w-20 md:h-20 bg-stone-900/90 active:bg-red-950/80 border border-stone-700 active:border-red-800 rounded-2xl flex items-center justify-center shadow-lg transition-all active:scale-95 select-none touch-none">
+                    <svg class="w-8 h-8 text-stone-400 active:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <button id="btn-right" class="w-16 h-16 md:w-20 md:h-20 bg-stone-900/90 active:bg-red-950/80 border border-stone-700 active:border-red-800 rounded-2xl flex items-center justify-center shadow-lg transition-all active:scale-95 select-none touch-none">
+                    <svg class="w-8 h-8 text-stone-400 active:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+            </div>
+
+            <!-- Right Side: Action Trigger Buttons -->
+            <div class="flex items-center gap-3">
+                <!-- Special Ability / Shift Power -->
+                <button id="btn-ability" class="w-14 h-14 md:w-16 md:h-16 bg-amber-950/40 active:bg-amber-900/60 border border-amber-900/50 rounded-full flex flex-col items-center justify-center shadow-lg active:scale-95 select-none touch-none text-[9px] font-bold text-amber-500">
+                    <span>ABILITY</span>
+                    <span class="text-[7px] text-amber-600 font-normal">SHIFT</span>
+                </button>
+                <!-- Secondary / Melee Sabre -->
+                <button id="btn-melee" class="w-14 h-14 md:w-16 md:h-16 bg-stone-900/90 active:bg-stone-800/80 border border-stone-700 rounded-full flex flex-col items-center justify-center shadow-lg active:scale-95 select-none touch-none text-[9px] font-bold text-stone-300">
+                    <span>MELEE</span>
+                    <span class="text-[7px] text-stone-500 font-normal">SPACE</span>
+                </button>
+                <!-- Primary Action / Shoot / Axe -->
+                <button id="btn-primary" class="w-16 h-16 md:w-20 md:h-20 bg-red-900 active:bg-red-800 border-2 border-red-600 rounded-full flex flex-col items-center justify-center shadow-red-900/50 shadow-lg active:scale-95 select-none touch-none text-xs font-bold text-white">
+                    <span>ATTACK</span>
+                    <span class="text-[8px] text-red-300 font-normal">CLICK</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Instructions panel for desktop compatibility -->
+    <div class="text-stone-500 text-[10px] md:text-xs mt-3 text-center hidden md:block">
+        Desktop Keys: [A / D] Move Left/Right | [Left Click] Attack / Shoot | [Space] Melee Attack | [Shift] Class Ability
+    </div>
+
+    <script>
+        // Web Audio Synthesizer for retro Napoleonic Sound FX - Lazy initialized safely on interaction
+        let audioCtx = null;
+
+        function playSynthSound(type) {
+            try {
+                // Initialize audio context safely on first user gesture
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (type === 'musket') {
+                    // Gunpowder explosion: Noise + quick low frequency pitch decay
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.35);
+                    gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.4);
+                } else if (type === 'pistol') {
+                    // High-pitched explosive crack
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(450, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.2);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.22);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.25);
+                } else if (type === 'sabre' || type === 'axe') {
+                    // High pitch blade swoosh frequency drop
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.15);
+                    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.18);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.2);
+                } else if (type === 'hurt') {
+                    // Low ominous growl
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(110, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.26);
+                }
+            } catch (e) {
+                console.log("Audio synthesis context skipped or deferred.", e);
+            }
+        }
+
+        // Core Game Constants & Variables
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // SAFELY INITIALIZE game state values immediately to prevent draw loop crashes!
+        let player = null;
+        let zombies = [];
+        let bullets = [];
+        let particles = [];
+        let barricades = [];
+        let keys = {};
+        let gameActive = false;
+        let currentClass = "";
+        let wave = 1;
+        let primaryCooldown = 0;
+        let abilityCooldown = 0;
+        let combatTimer = 0;
+
+        const classConfigurations = {
+            line: { name: "Line Infantry", hp: 100, speed: 4, primary: "musket" },
+            officer: { name: "Officer", hp: 100, speed: 4.5, primary: "pistol" },
+            sapper: { name: "Sapper", hp: 130, speed: 3.5, primary: "axe" },
+            medic: { name: "Medic", hp: 90, speed: 4.2, primary: "sabre" },
+            cuirassier: { name: "Cuirassier", hp: 150, speed: 3.8, primary: "pallasch" }
+        };
+
+        // Initialize state variables on class selection
+        function selectClass(className) {
+            // Lazy-init audio engine safely on first touch selection
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            } catch(e){}
+            
+            currentClass = className;
+            document.getElementById("menu-screen").classList.add("hidden");
+            initGame();
+        }
+
+        function initGame() {
+            const config = classConfigurations[currentClass];
+            player = {
+                x: 400,
+                y: 320,
+                width: 30,
+                height: 50,
+                maxHp: config.hp,
+                hp: config.hp,
+                speed: config.speed,
+                facing: 1,
+                isSwinging: false,
+                swingTimer: 0,
+                buffed: false,
+                buffTimer: 0,
+                isCharging: false,
+                chargeTimer: 0
+            };
+
+            zombies = [];
+            bullets = [];
+            particles = [];
+            barricades = [];
+            keys = {};
+            wave = 1;
+            primaryCooldown = 0;
+            abilityCooldown = 0;
+            combatTimer = 0;
+            gameActive = true;
+
+            document.getElementById("game-over").classList.add("hidden");
+            document.getElementById("class-display").innerText = config.name;
+            
+            // Adjust UI layout for Sapper, Officer, and Cuirassier active abilities
+            const abUI = document.getElementById("ability-ui");
+            if (currentClass === 'sapper' || currentClass === 'officer' || currentClass === 'cuirassier') {
+                abUI.classList.remove("hidden");
+            } else {
+                abUI.classList.add("hidden");
+            }
+
+            spawnWave();
+        }
+
+        // Keyboard Inputs
+        window.addEventListener("keydown", (e) => keys[e.key.toLowerCase()] = true);
+        window.addEventListener("keyup", (e) => keys[e.key.toLowerCase()] = false);
+
+        window.addEventListener("keydown", (e) => {
+            if (e.key === "Shift" && gameActive) {
+                useAbility();
+            }
+            if (e.key === " " && gameActive && player && !player.isSwinging) {
+                meleeAttack(currentClass === 'sapper' ? 'axe' : (currentClass === 'cuirassier' ? 'pallasch' : 'sabre'));
+            }
+        });
+
+        // Mouse clicks on canvas
+        canvas.addEventListener("mousedown", (e) => {
+            if (!gameActive) return;
+            if (e.button === 0) {
+                usePrimaryAction();
+            }
+        });
+        canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+        // iPad / Mobile On-Screen Virtual Button Triggers
+        function setupTouchControllers() {
+            const btnLeft = document.getElementById("btn-left");
+            const btnRight = document.getElementById("btn-right");
+            const btnPrimary = document.getElementById("btn-primary");
+            const btnMelee = document.getElementById("btn-melee");
+            const btnAbility = document.getElementById("btn-ability");
+
+            // Helper to handle standard touch events
+            const bindTouch = (el, onStart, onEnd) => {
+                el.addEventListener("touchstart", (e) => {
+                    e.preventDefault();
+                    onStart();
+                }, { passive: false });
+
+                el.addEventListener("touchend", (e) => {
+                    e.preventDefault();
+                    onEnd();
+                }, { passive: false });
+            };
+
+            bindTouch(btnLeft, () => { keys['a'] = true; }, () => { keys['a'] = false; });
+            bindTouch(btnRight, () => { keys['d'] = true; }, () => { keys['d'] = false; });
+
+            // Triggers instantly on finger-press down
+            btnPrimary.addEventListener("touchstart", (e) => {
+                e.preventDefault();
+                if (gameActive) usePrimaryAction();
+            }, { passive: false });
+
+            btnMelee.addEventListener("touchstart", (e) => {
+                e.preventDefault();
+                if (gameActive && player && !player.isSwinging) {
+                    meleeAttack(currentClass === 'sapper' ? 'axe' : (currentClass === 'cuirassier' ? 'pallasch' : 'sabre'));
+                }
+            }, { passive: false });
+
+            btnAbility.addEventListener("touchstart", (e) => {
+                e.preventDefault();
+                if (gameActive) useAbility();
+            }, { passive: false });
+        }
+
+        setupTouchControllers();
+
+        function usePrimaryAction() {
+            if (!player || primaryCooldown > 0) return;
+
+            const weaponType = classConfigurations[currentClass].primary;
+            if (weaponType === "musket") {
+                shootWeapon(12, 110, 110, "musket"); // Fast projectile, instant reload gap
+            } else if (weaponType === "pistol") {
+                shootWeapon(10, 60, 55, "pistol");  // Moderate velocity, rapid re-arm
+            } else if (weaponType === "axe") {
+                meleeAttack("axe");
+            } else if (weaponType === "sabre") {
+                meleeAttack("sabre");
+            } else if (weaponType === "pallasch") {
+                meleeAttack("pallasch");
+            }
+        }
+
+        function shootWeapon(velocity, damage, baseCooldown, type) {
+            primaryCooldown = player.buffed ? Math.floor(baseCooldown / 1.8) : baseCooldown;
+            combatTimer = 180;
+            playSynthSound(type);
+
+            bullets.push({
+                x: player.facing === 1 ? player.x + player.width : player.x,
+                y: player.y + 20,
+                dx: player.facing * velocity,
+                width: 8,
+                height: 4,
+                damage: damage
+            });
+
+            // Spark and powder smoke particles
+            for(let i = 0; i < 10; i++) {
+                particles.push({
+                    x: player.facing === 1 ? player.x + player.width : player.x,
+                    y: player.y + 20,
+                    dx: player.facing * (Math.random() * 3 + 1.5),
+                    dy: (Math.random() - 0.5) * 2,
+                    radius: Math.random() * 3.5 + 2,
+                    alpha: 1,
+                    color: "rgba(220,220,220,"
+                });
+            }
+        }
+
+        function meleeAttack(type) {
+            if (!player) return;
+            player.isSwinging = true;
+            let actionDuration = player.buffed ? 6 : 12;
+            player.swingTimer = actionDuration;
+            primaryCooldown = actionDuration;
+            combatTimer = 180;
+            playSynthSound(type === 'pallasch' ? 'sabre' : type);
+
+            // Generous attack ranges to ensure hits register easily
+            let range = type === 'axe' ? 55 : (type === 'pallasch' ? 75 : 65);
+            let dmg = type === 'axe' ? 70 : (type === 'pallasch' ? 60 : 40);
+            let attackX = player.facing === 1 ? player.x + player.width : player.x - range;
+
+            zombies.forEach(zombie => {
+                if (zombie.x + zombie.width > attackX && zombie.x < attackX + range &&
+                    zombie.y + zombie.height > player.y && zombie.y < player.y + player.height) {
+                    
+                    zombie.hp -= dmg;
+                    zombie.flashTimer = 10; // Trigger high-visibility red damage flash
+                    
+                    // Knockback: Push zombie backward depending on player facing direction
+                    zombie.x += player.facing * 12; 
+                    
+                    createSplatter(zombie.x + zombie.width / 2, zombie.y + zombie.height / 2, "rgba(139,0,0,");
+                }
+            });
+        }
+
+        function useAbility() {
+            if (!player || abilityCooldown > 0) return;
+
+            if (currentClass === 'sapper') {
+                let bx = player.facing === 1 ? player.x + player.width + 10 : player.x - 30;
+                barricades.push({ x: bx, y: 310, width: 20, height: 60, hp: 160 });
+                abilityCooldown = 360; // 6 seconds reload
+            } else if (currentClass === 'officer') {
+                player.buffed = true;
+                player.buffTimer = 240; // 4 seconds combat speed buff
+                abilityCooldown = 540; // 9 seconds cool
+                for(let i = 0; i < 15; i++) {
+                    createSplatter(player.x + 15, player.y + 20, "rgba(245,158,11,");
+                }
+            } else if (currentClass === 'cuirassier') {
+                player.isCharging = true;
+                player.chargeTimer = 22; // Dash frames duration
+                abilityCooldown = 480; // 8 seconds reload cooldown
+                playSynthSound('sabre');
+            }
+        }
+
+        function spawnWave() {
+            let count = 4 + wave * 2;
+            for (let i = 0; i < count; i++) {
+                let side = Math.random() > 0.5;
+                let x = side ? canvas.width + Math.random() * 400 : -Math.random() * 400;
+                zombies.push({
+                    x: x, 
+                    y: 320, 
+                    width: 30, 
+                    height: 50,
+                    speed: 0.8 + Math.random() * 0.5 + (wave * 0.08),
+                    hp: 85 + (wave * 12), 
+                    maxHp: 85 + (wave * 12),
+                    flashTimer: 0 // Used for brief red flashing when taking damage
+                });
+            }
+        }
+
+        function createSplatter(x, y, colorBase) {
+            for(let i = 0; i < 8; i++) {
+                particles.push({
+                    x: x, 
+                    y: y,
+                    dx: (Math.random() - 0.5) * 5, 
+                    dy: (Math.random() - 0.7) * 4,
+                    radius: Math.random() * 3 + 1.2, 
+                    alpha: 1, 
+                    color: colorBase
+                });
+            }
+        }
+
+        function update() {
+            if (!gameActive || !player) return;
+
+            // Health regeneration handling for Medics outside of active fights
+            if (combatTimer > 0) combatTimer--;
+            if (currentClass === 'medic' && combatTimer <= 0 && player.hp < player.maxHp) {
+                player.hp += 0.12; 
+            }
+
+            // Cavalry charge dash processing
+            if (player.isCharging) {
+                player.x += player.facing * 10;
+                player.chargeTimer--;
+                combatTimer = 180;
+
+                // Stampede collision logic - damages and massive knockback
+                zombies.forEach(z => {
+                    if (z.x + z.width > player.x && z.x < player.x + player.width) {
+                        z.hp -= 2.0; // Contact stampede crush damage
+                        z.flashTimer = 8;
+                        z.x += player.facing * 18; // Launch zombies backwards
+                        createSplatter(z.x + z.width / 2, z.y + z.height / 2, "rgba(220,220,220,");
+                    }
+                });
+
+                if (player.chargeTimer <= 0) {
+                    player.isCharging = false;
+                }
+            }
+
+            // Tactical Buff timers
+            if (player.buffed) {
+                player.buffTimer--;
+                if (player.buffTimer <= 0) player.buffed = false;
+            }
+
+            // Cooldown limits
+            if (primaryCooldown > 0) primaryCooldown--;
+            if (abilityCooldown > 0) abilityCooldown--;
+
+            // Move the soldier
+            let activeSpeed = player.buffed ? player.speed * 1.35 : player.speed;
+            if (!player.isCharging) { // Freeze movement keys while charging forward
+                if (keys['a'] || keys['arrowleft']) { player.x -= activeSpeed; player.facing = -1; }
+                if (keys['d'] || keys['arrowright']) { player.x += activeSpeed; player.facing = 1; }
+            }
+            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+
+            if (player.isSwinging) {
+                player.swingTimer--;
+                if (player.swingTimer <= 0) player.isSwinging = false;
+            }
+
+            // Render Bullet Movement
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                let b = bullets[i]; 
+                b.x += b.dx;
+                let hit = false;
+                for (let j = zombies.length - 1; j >= 0; j--) {
+                    let z = zombies[j];
+                    if (b.x > z.x && b.x < z.x + z.width && b.y > z.y && b.y < z.y + z.height) {
+                        z.hp -= b.damage;
+                        z.flashTimer = 10; // Trigger visual damage flash
+                        z.x += (b.dx > 0 ? 1 : -1) * 15; // Give gunshot bullet impact solid knockback
+                        createSplatter(z.x + z.width / 2, z.y + z.height / 2, "rgba(139,0,0,");
+                        hit = true; 
+                        break;
+                    }
+                }
+                if (hit || b.x < 0 || b.x > canvas.width) bullets.splice(i, 1);
+            }
+
+            // Clean destroyed Sapper barricades
+            for (let i = barricades.length - 1; i >= 0; i--) {
+                if (barricades[i].hp <= 0) barricades.splice(i, 1);
+            }
+
+            // Zombie intelligence, pathing & damage loops
+            for (let i = zombies.length - 1; i >= 0; i--) {
+                let z = zombies[i];
+                if (z.hp <= 0) { 
+                    zombies.splice(i, 1); 
+                    continue; 
+                }
+
+                // Check Sapper barricade resistance block
+                let barricaded = false;
+                barricades.forEach(b => {
+                    if (z.x + z.width > b.x && z.x < b.x + b.width) {
+                        barricaded = true;
+                        b.hp -= 0.35; 
+                        createSplatter(b.x + b.width / 2, b.y + 15, "rgba(115,75,45,");
+                    }
+                });
+
+                if (!barricaded) {
+                    if (z.x < player.x) z.x += z.speed; 
+                    else z.x -= z.speed;
+                }
+
+                // Damage soldier on touch (with Cuirass plate absorption)
+                if (z.x + z.width > player.x && z.x < player.x + player.width) {
+                    let baseDmg = 0.45;
+                    if (currentClass === 'cuirassier') baseDmg *= 0.75; // Blocks 25% damage
+                    player.hp -= baseDmg;
+                    combatTimer = 180;
+                    if (Math.random() < 0.05) playSynthSound('hurt');
+                    if (player.hp <= 0) {
+                        player.hp = 0; 
+                        gameActive = false;
+                        document.getElementById("final-wave").innerText = wave;
+                        document.getElementById("game-over").classList.remove("hidden");
+                    }
+                }
+            }
+
+            // Splatter Physics particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i]; 
+                p.x += p.dx; 
+                p.y += p.dy; 
+                p.dy += 0.1; 
+                p.alpha -= 0.02;
+                if (p.alpha <= 0) particles.splice(i, 1);
+            }
+
+            // Start fresh wave when board clears
+            if (zombies.length === 0) { 
+                wave++; 
+                spawnWave(); 
+            }
+
+            updateHUD();
+        }
+
+        function updateHUD() {
+            if (!player) return;
+            const hpRatio = Math.max(0, (player.hp / player.maxHp) * 100);
+            document.getElementById("hp-display").innerText = Math.ceil(hpRatio) + "%";
+            document.getElementById("hp-bar").style.width = hpRatio + "%";
+            document.getElementById("wave-display").innerText = wave;
+            document.getElementById("zombies-display").innerText = zombies.length;
+            
+            const weaponType = classConfigurations[currentClass].primary;
+            const ammoIndicator = document.getElementById("ammo-display");
+            if (weaponType === 'musket' || weaponType === 'pistol') {
+                if (primaryCooldown === 0) {
+                    ammoIndicator.innerText = "Ready to Fire";
+                    ammoIndicator.className = "font-bold text-green-400";
+                } else {
+                    ammoIndicator.innerText = "Chambering Round...";
+                    ammoIndicator.className = "font-bold text-amber-500 animate-pulse";
+                }
+            } else if (weaponType === 'pallasch') {
+                ammoIndicator.innerText = "Heavy Pallasch Ready";
+                ammoIndicator.className = "font-bold text-green-400";
+            } else {
+                ammoIndicator.innerText = "Melee Ready";
+                ammoIndicator.className = "font-bold text-green-400";
+            }
+            
+            const abIndicator = document.getElementById("ability-display");
+            if (abilityCooldown > 0) {
+                abIndicator.innerText = `Charging (${Math.ceil(abilityCooldown / 60)}s)`;
+                abIndicator.className = "font-bold text-red-500";
+            } else {
+                abIndicator.innerText = "Ready";
+                abIndicator.className = "font-bold text-green-400";
+            }
+        }
+
+        function draw() {
+            // Draw Night sky backdrop
+            ctx.fillStyle = "#1e293b"; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw Ground floor
+            ctx.fillStyle = "#3c2a21"; 
+            ctx.fillRect(0, 370, canvas.width, 30);
+
+            // SAFELY EXIT drawing player/entities if game is not started/active yet!
+            if (!player) return;
+
+            // Render Bullet paths
+            ctx.fillStyle = "#fef08a";
+            bullets.forEach(b => ctx.fillRect(b.x, b.y, b.width, b.height));
+
+            // Render active Sapper structures
+            barricades.forEach(b => {
+                ctx.fillStyle = "#78350f"; 
+                ctx.fillRect(b.x, b.y, b.width, b.height);
+                ctx.fillStyle = "#451a03"; 
+                ctx.fillRect(b.x, b.y + 12, b.width, 4);
+                ctx.fillRect(b.x, b.y + 35, b.width, 4);
+            });
+
+            // Render Zombie mobs
+            zombies.forEach(z => {
+                // If recently hit, flash bright red; otherwise use standard zombie color
+                if (z.flashTimer > 0) {
+                    ctx.fillStyle = "#dc2626"; // Flash Red
+                    z.flashTimer--;
+                } else {
+                    ctx.fillStyle = "#475569"; // Normal Zombie Blue-Grey
+                }
+                ctx.fillRect(z.x, z.y, z.width, z.height);
+                
+                // Red glowing decay eyes
+                ctx.fillStyle = "#ef4444"; 
+                ctx.fillRect(z.x + (z.x < player.x ? z.width - 8 : 4), z.y + 10, 4, 4);
+
+                // Draw high-visibility Health Bar above any damaged zombie
+                if (z.hp < z.maxHp) {
+                    const barWidth = 30;
+                    const barHeight = 4;
+                    const hpPercentage = Math.max(0, z.hp / z.maxHp);
+                    
+                    // Dark background outline
+                    ctx.fillStyle = "#1c1917";
+                    ctx.fillRect(z.x + (z.width - barWidth) / 2, z.y - 10, barWidth, barHeight);
+                    
+                    // Red health bar
+                    ctx.fillStyle = "#f87171";
+                    ctx.fillRect(z.x + (z.width - barWidth) / 2, z.y - 10, barWidth * hpPercentage, barHeight);
+                }
+            });
+
+            // Render Particle sparks
+            particles.forEach(p => { 
+                ctx.fillStyle = p.color + p.alpha + ")"; 
+                ctx.beginPath(); 
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); 
+                ctx.fill(); 
+            });
+
+            // Draw Regiment uniform coatings
+            let coatColor = "#1e3a8a"; // Line Uniform default
+            if (currentClass === 'officer') coatColor = "#991b1b"; // Deep red coat
+            if (currentClass === 'sapper') coatColor = "#292524";  // Darkened canvas apron
+            if (currentClass === 'medic') coatColor = "#065f46";   // Surgical green uniform coat
+            if (currentClass === 'cuirassier') coatColor = "#334155"; // Slate gray tunic
+
+            // Coat & Pants
+            ctx.fillStyle = coatColor; 
+            ctx.fillRect(player.x, player.y + 15, player.width, 20);
+
+            // Render Gleaming Breastplate Armor for Cuirassier
+            if (currentClass === 'cuirassier') {
+                ctx.fillStyle = "#94a3b8"; // Shiny steel plate
+                ctx.fillRect(player.x + 3, player.y + 15, player.width - 6, 18);
+                ctx.fillStyle = "#f1f5f9"; // Shiny reflection comb
+                ctx.fillRect(player.x + 6, player.y + 17, 3, 14);
+                ctx.fillStyle = "#b45309"; // Brass shoulder scale accents
+                ctx.fillRect(player.x + 2, player.y + 14, player.width - 4, 2);
+            }
+
+            ctx.fillStyle = "#f3f4f6"; 
+            ctx.fillRect(player.x, player.y + 35, player.width, 15);
+            // Face
+            ctx.fillStyle = "#fbcfe8"; 
+            ctx.fillRect(player.x + 5, player.y + 3, player.width - 10, 12);
+
+            // Shako Hat / Cuirassier Brass Helmet
+            if (currentClass === 'cuirassier') {
+                ctx.fillStyle = "#d97706"; // Golden polished brass helmet body
+                ctx.fillRect(player.x + 2, player.y - 12, player.width - 4, 15);
+                // Long red horsehair plume comb falling backward
+                ctx.fillStyle = "#b91c1c";
+                ctx.fillRect(player.x + (player.facing === 1 ? -4 : player.width), player.y - 10, 4, 18);
+            } else {
+                ctx.fillStyle = player.buffed ? "#fbbf24" : "#1e293b"; 
+                ctx.fillRect(player.x + 2, player.y - 12, player.width - 4, 15);
+            }
+
+            // Draw Swing / Fire Animations
+            if (player.isSwinging) {
+                ctx.strokeStyle = currentClass === 'sapper' ? "#9ca3af" : (currentClass === 'cuirassier' ? "#cbd5e1" : "#f3f4f6");
+                ctx.lineWidth = currentClass === 'cuirassier' ? 5 : 4; 
+                ctx.beginPath();
+                // Visual swing size matches expanded ranges
+                let swingRadius = currentClass === 'sapper' ? 40 : (currentClass === 'cuirassier' ? 55 : 48);
+                if (player.facing === 1) {
+                    ctx.arc(player.x + player.width, player.y + 25, swingRadius, -Math.PI / 4, Math.PI / 4);
+                } else {
+                    ctx.arc(player.x, player.y + 25, swingRadius, Math.PI, Math.PI * 1.5);
+                }
+                ctx.stroke();
+            } else {
+                // Render gun barrels / Heavy pallasch swords
+                ctx.fillStyle = "#78350f";
+                if (classConfigurations[currentClass].primary === 'musket') {
+                    ctx.fillRect(player.x + (player.facing === 1 ? 15 : -10), player.y + 20, 25, 6);
+                } else if (classConfigurations[currentClass].primary === 'pistol') {
+                    ctx.fillRect(player.x + (player.facing === 1 ? 15 : -5), player.y + 20, 12, 5);
+                } else if (classConfigurations[currentClass].primary === 'pallasch') {
+                    ctx.fillStyle = "#94a3b8"; // Heavy silver blade
+                    ctx.fillRect(player.x + (player.facing === 1 ? player.width - 4 : -2), player.y + 6, 6, 21);
+                    ctx.fillStyle = "#d97706"; // Golden brass hilt guard
+                    ctx.fillRect(player.x + (player.facing === 1 ? player.width - 7 : -5), player.y + 23, 12, 4);
+                }
+            }
+        }
+
+        function backToMenu() {
+            player = null; // Clean player to halt draws
+            document.getElementById("game-over").classList.add("hidden");
+            document.getElementById("menu-screen").classList.remove("hidden");
+        }
+
+        // Loop Runner
+        function gameLoop() {
+            update(); 
+            draw(); 
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start animation frame cycles instantly (draw safety layers handles menu mode checks smoothly)
+        gameLoop();
+    </script>
+</body>
+</html>
