@@ -1,0 +1,1979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Guts & Blackpowder - Leipzig Outpost</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles to prevent text-selection and double-tap zoom on iPad */
+        body {
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        canvas {
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body class="bg-stone-950 text-white font-mono flex flex-col items-center justify-between min-h-screen p-2 md:p-6 overflow-hidden">
+
+    <!-- Main Game Frame -->
+    <div class="relative w-full max-w-4xl bg-stone-900 rounded-xl border border-red-950 shadow-2xl flex flex-col overflow-hidden">
+        
+        <!-- Top HUD Panel -->
+        <div class="w-full bg-stone-950/80 backdrop-blur-md p-3 border-b border-red-950 flex justify-between items-center z-10 text-xs md:text-sm">
+            <div class="flex flex-col gap-1">
+                <div class="font-bold text-red-500">Regiment: <span id="class-display" class="text-white">-</span> | Location: <span id="location-display" class="text-amber-500 font-black">OUTDOORS</span></div>
+                <div class="flex items-center gap-2">
+                    <span class="font-bold">HP:</span>
+                    <div class="w-24 md:w-32 bg-stone-800 rounded-full h-3 overflow-hidden border border-stone-700">
+                        <div id="hp-bar" class="bg-red-600 h-full transition-all duration-100" style="width: 100%;"></div>
+                    </div>
+                    <span id="hp-display" class="font-bold">100%</span>
+                </div>
+            </div>
+            
+            <div class="flex flex-col items-end gap-1">
+                <div class="font-bold text-amber-500">Wave <span id="wave-display" class="text-white text-base">1</span></div>
+                <div class="text-[10px] md:text-xs text-stone-400">Zombies: <span id="zombies-display" class="text-white font-bold">0</span></div>
+            </div>
+        </div>
+
+        <!-- Interactive Canvas Area -->
+        <div class="relative w-full aspect-[2/1] bg-sky-950">
+            <canvas id="gameCanvas" width="800" height="400" class="w-full h-full block"></canvas>
+            
+            <!-- Gun/Ability HUD Overlay inside Canvas -->
+            <div class="absolute bottom-4 left-4 right-4 flex justify-between items-end pointer-events-none z-10">
+                <!-- Weapon Status Card -->
+                <div class="bg-black/60 border border-stone-800 p-2 rounded text-xs backdrop-blur-sm">
+                    <div class="text-stone-400">Weapon Status:</div>
+                    <div id="ammo-display" class="font-bold text-green-400">Ready</div>
+                </div>
+                <!-- Active Ability Status Card -->
+                <div id="ability-ui" class="bg-black/60 border border-stone-800 p-2 rounded text-xs backdrop-blur-sm hidden">
+                    <div class="text-stone-400">Ability [SHIFT]:</div>
+                    <div id="ability-display" class="font-bold text-amber-400">Ready</div>
+                </div>
+            </div>
+
+            <!-- Interactive Action Prompt Overlay -->
+            <div id="action-prompt" class="hidden absolute top-[55%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-stone-950/95 border-2 border-red-700 p-3 rounded-xl flex flex-col items-center gap-2 z-30 shadow-2xl backdrop-blur-md pointer-events-auto">
+                <span id="action-prompt-text" class="text-xs md:text-sm font-bold text-stone-200 text-center uppercase tracking-widest"></span>
+                <button id="btn-action" onclick="window.triggerActionPrompt()" class="px-5 py-1.5 bg-red-800 hover:bg-red-700 text-white rounded-lg font-bold text-xs tracking-wider border border-red-500 shadow-md active:scale-95 transition-all">
+                    USE [E]
+                </button>
+            </div>
+
+            <!-- Menu Screen / Class Selection -->
+            <div id="menu-screen" class="absolute inset-0 bg-stone-950/95 flex flex-col items-center justify-start p-4 z-20 overflow-y-auto">
+                <h1 class="text-xl md:text-3xl font-black text-red-600 tracking-wider mb-2 text-center drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] animate-pulse">
+                    GUTS &amp; BLACKPOWDER
+                </h1>
+                <p class="text-[10px] md:text-xs text-stone-400 mb-3 text-center max-w-md">
+                    Select your Napoleonic regiment. Defend Leipzig outdoors or hold the building interiors against runners, bombers, and armored guards!
+                </p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 w-full max-w-2xl px-2">
+                    <!-- Line Infantry -->
+                    <button onclick="window.selectClass('line')" class="group flex flex-col items-start bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-red-800 p-2 rounded-lg transition-all text-left">
+                        <span class="text-xs font-bold text-red-500 group-hover:text-red-400">Line Infantry</span>
+                        <span class="text-[9px] text-stone-300 mt-1">Weapons: Heavy Musket &amp; Sabre. Long range, solid stopping power.</span>
+                    </button>
+                    
+                    <!-- Officer -->
+                    <button onclick="window.selectClass('officer')" class="group flex flex-col items-start bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-red-800 p-2 rounded-lg transition-all text-left">
+                        <span class="text-xs font-bold text-red-500 group-hover:text-red-400">Officer</span>
+                        <span class="text-[9px] text-stone-300 mt-1">Weapons: Pistol &amp; Sword. Ability: Rallies Troops [Speed/Reload buff].</span>
+                    </button>
+                    
+                    <!-- Sapper -->
+                    <button onclick="window.selectClass('sapper')" class="group flex flex-col items-start bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-red-800 p-2 rounded-lg transition-all text-left">
+                        <span class="text-xs font-bold text-red-500 group-hover:text-red-400">Sapper</span>
+                        <span class="text-[9px] text-stone-300 mt-1">Weapons: Heavy Axe. Ability: Deploys Wooden Barricades.</span>
+                    </button>
+                    
+                    <!-- Medic -->
+                    <button onclick="window.selectClass('medic')" class="group flex flex-col items-start bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-red-800 p-2 rounded-lg transition-all text-left">
+                        <span class="text-xs font-bold text-red-500 group-hover:text-red-400">Medic</span>
+                        <span class="text-[9px] text-stone-300 mt-1">Weapons: Surgeon's Sabre. Active Ability: [SHIFT] Bandage (Self-heal 50 HP). Passive: Heals health when not in active combat.</span>
+                    </button>
+                    
+                    <!-- Cuirassier -->
+                    <button onclick="window.selectClass('cuirassier')" class="group flex flex-col items-start bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-amber-600 p-2 rounded-lg transition-all text-left">
+                        <span class="text-xs font-bold text-amber-500 group-hover:text-amber-400">Cuirassier (Heavy Armor)</span>
+                        <span class="text-[9px] text-stone-300 mt-1">Weapons: Heavy Pallasch. Passive: 25% defense. Ability: Cavalry Charge.</span>
+                    </button>
+
+                    <!-- Chaplain -->
+                    <button onclick="window.selectClass('chaplain')" class="group flex flex-col items-start bg-stone-900 hover:bg-stone-800 border border-purple-900/40 hover:border-purple-500 p-2 rounded-lg transition-all text-left">
+                        <span class="text-xs font-bold text-purple-400 group-hover:text-purple-300">Chaplain</span>
+                        <span class="text-[9px] text-stone-300 mt-1">Weapons: Sabre. Ability: Crucifix Ward [Wards/Stuns all nearby zombies].</span>
+                    </button>
+
+                    <!-- Seaman -->
+                    <button onclick="window.selectClass('seaman')" class="group flex flex-col md:col-span-2 items-start bg-stone-900 hover:bg-stone-800 border border-sky-900/40 hover:border-sky-500 p-2 rounded-lg transition-all text-left">
+                        <span class="text-xs font-bold text-sky-400 group-hover:text-sky-300">Royal Seaman</span>
+                        <span class="text-[9px] text-stone-300 mt-1">Weapons: Blunderbuss [Devastating close spread] &amp; Cutlass. Ability: Nock Gun Volley.</span>
+                    </button>
+                </div>
+                
+                <p class="text-[9px] text-stone-500 mt-3 text-center font-bold">Tap any class to enlist and launch the game.</p>
+            </div>
+
+            <!-- Game Over Screen -->
+            <div id="game-over" class="hidden absolute inset-0 bg-black/90 flex flex-col items-center justify-center p-4 z-20">
+                <h1 class="text-3xl md:text-5xl font-black text-red-700 tracking-widest animate-pulse mb-2">YOU PERISHED</h1>
+                <p class="text-xs md:text-sm text-stone-400 mb-6 text-center max-w-sm">The regiment was overwhelmed by the horde.</p>
+                <div class="bg-stone-900 border border-stone-800 p-4 rounded-lg w-full max-w-xs text-center mb-6 text-xs">
+                    <div class="text-stone-400">Waves Survived</div>
+                    <div id="final-wave" class="text-3xl font-black text-red-500 mt-1">0</div>
+                </div>
+                <button onclick="window.backToMenu()" class="px-6 py-3 bg-red-800 hover:bg-red-700 active:scale-95 text-sm font-bold tracking-wider rounded-lg border border-red-600 transition-all">
+                    Return to Menu
+                </button>
+            </div>
+        </div>
+
+        <!-- On-Screen iPad & Mobile Touch Controller Layout -->
+        <div class="w-full bg-stone-950 p-4 flex justify-between items-center gap-4 border-t border-stone-900 select-none">
+            <!-- Left Side: Movement D-PAD -->
+            <div class="flex items-center gap-3">
+                <button id="btn-left" class="w-16 h-16 md:w-20 md:h-20 bg-stone-900/90 active:bg-red-950/80 border border-stone-700 active:border-red-800 rounded-2xl flex items-center justify-center shadow-lg transition-all active:scale-95 select-none touch-none">
+                    <svg class="w-8 h-8 text-stone-400 active:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <button id="btn-right" class="w-16 h-16 md:w-20 md:h-20 bg-stone-900/90 active:bg-red-950/80 border border-stone-700 active:border-red-800 rounded-2xl flex items-center justify-center shadow-lg transition-all active:scale-95 select-none touch-none">
+                    <svg class="w-8 h-8 text-stone-400 active:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+            </div>
+
+            <!-- Right Side: Action Trigger Buttons -->
+            <div class="flex items-center gap-3">
+                <!-- Special Ability / Shift Power -->
+                <button id="btn-ability" class="w-14 h-14 md:w-16 md:h-16 bg-amber-950/40 active:bg-amber-900/60 border border-amber-900/50 rounded-full flex flex-col items-center justify-center shadow-lg active:scale-95 select-none touch-none text-[9px] font-bold text-amber-500">
+                    <span>ABILITY</span>
+                    <span class="text-[7px] text-amber-600 font-normal">SHIFT</span>
+                </button>
+                <!-- Secondary / Melee Sabre -->
+                <button id="btn-melee" class="w-14 h-14 md:w-16 md:h-16 bg-stone-900/90 active:bg-stone-800/80 border border-stone-700 rounded-full flex flex-col items-center justify-center shadow-lg active:scale-95 select-none touch-none text-[9px] font-bold text-stone-300">
+                    <span>MELEE</span>
+                    <span class="text-[7px] text-stone-500 font-normal">SPACE</span>
+                </button>
+                <!-- Primary Action / Shoot / Axe -->
+                <button id="btn-primary" class="w-16 h-16 md:w-20 md:h-20 bg-red-900 active:bg-red-800 border-2 border-red-600 rounded-full flex flex-col items-center justify-center shadow-red-900/50 shadow-lg active:scale-95 select-none touch-none text-xs font-bold text-white">
+                    <span>ATTACK</span>
+                    <span class="text-[8px] text-red-300 font-normal">CLICK</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Instructions panel for desktop compatibility -->
+    <div class="text-stone-500 text-[10px] md:text-xs mt-3 text-center hidden md:block">
+        Desktop Keys: [A / D] Move Left/Right | [E] Enter/Exit Buildings / Use Objects | [Left Click] Attack / Shoot | [Space] Melee Attack | [Shift] Class Ability
+    </div>
+
+    <script>
+        // Web Audio Synthesizer for retro Napoleonic Sound FX - Lazy initialized safely on interaction
+        let audioCtx = null;
+
+        function playSynthSound(type) {
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (type === 'musket') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.35);
+                    gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.4);
+                } else if (type === 'pistol') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(450, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.2);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.22);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.25);
+                } else if (type === 'blunderbuss') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(180, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(5, audioCtx.currentTime + 0.45);
+                    gain.gain.setValueAtTime(0.6, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.5);
+                } else if (type === 'nock') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(1, audioCtx.currentTime + 0.6);
+                    gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.75);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.8);
+                } else if (type === 'sabre' || type === 'axe' || type === 'cutlass' || type === 'pallasch') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.15);
+                    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.18);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.2);
+                } else if (type === 'ward') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.5);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.6);
+                } else if (type === 'bandage') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(320, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(960, audioCtx.currentTime + 0.35);
+                    gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.38);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.4);
+                } else if (type === 'explosion') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(1, audioCtx.currentTime + 0.7);
+                    gain.gain.setValueAtTime(0.7, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.8);
+                } else if (type === 'hurt') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(110, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.26);
+                } else if (type === 'door') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.2);
+                    gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.3);
+                } else if (type === 'cannon') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(80, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(1, audioCtx.currentTime + 0.95);
+                    gain.gain.setValueAtTime(0.9, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.2);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 1.25);
+                }
+            } catch (e) {
+                console.log("Audio skipped or deferred.", e);
+            }
+        }
+
+        // Core Game Constants & Variables
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // MAP EXPANSION AND CAMERA SYSTEM PARAMETERS
+        const WORLD_WIDTH_OUTDOOR = 2400; // 3x wider than original canvas
+        const WORLD_WIDTH_INDOOR = 1200; // scrolling interior map width
+        
+        // Multi-level camera mechanics
+        let cameraX = 0;
+        let currentLocation = "outdoor"; // "outdoor", "tavern", "cathedral", "watchtower"
+        let activeActionType = null; // null, "enter_tavern", "enter_cathedral", "enter_watchtower", "exit_building", "tavern_supplies", "watchtower_cannon"
+        let transitionFade = 0; // Screen transition fade value
+        let cannonCooldown = 0; // Watchtower cannon reload timer
+        let suppliesCooldown = 0; // Tavern supply bag cooldown timer
+
+        // Custom Beautiful Atmospheric Buildings
+        const buildings = [
+            { name: "Ruined Tavern", id: "tavern", x: 200, width: 350, height: 260, color: "#2e251e", doorX: 350 },
+            { name: "Leipzig Cathedral", id: "cathedral", x: 1000, width: 500, height: 350, color: "#334155", doorX: 1250 },
+            { name: "Fortified Watchtower", id: "watchtower", x: 1850, width: 220, height: 310, color: "#1e293b", doorX: 1950 }
+        ];
+
+        // Atmospheric street lamps casting warm glowing overlays
+        const streetLamps = [550, 950, 1600, 2150];
+
+        // Safely initialize game state arrays
+        let player = null;
+        let zombies = [];
+        let bullets = [];
+        let particles = [];
+        let barricades = [];
+        let floatingTexts = []; 
+        let keys = {};
+        let gameActive = false;
+        let currentClass = "";
+        let wave = 1;
+        let primaryCooldown = 0;
+        let abilityCooldown = 0;
+        let combatTimer = 0;
+
+        const classConfigurations = {
+            line: { name: "Line Infantry", hp: 100, speed: 4, primary: "musket" },
+            officer: { name: "Officer", hp: 100, speed: 4.5, primary: "pistol" },
+            sapper: { name: "Sapper", hp: 130, speed: 3.5, primary: "axe" },
+            medic: { name: "Medic", hp: 90, speed: 4.2, primary: "sabre" },
+            cuirassier: { name: "Cuirassier (Heavy Armor)", hp: 150, speed: 3.8, primary: "pallasch" },
+            chaplain: { name: "Chaplain", hp: 100, speed: 4.0, primary: "sabre" },
+            seaman: { name: "Royal Seaman", hp: 110, speed: 3.8, primary: "blunderbuss" }
+        };
+
+        // EXPOSE CLASS SELECTION SECURELY TO WINDOW SCOPE
+        window.selectClass = function(className) {
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            } catch(e){}
+            
+            currentClass = className;
+            document.getElementById("menu-screen").classList.add("hidden");
+            initGame();
+        };
+
+        function initGame() {
+            const config = classConfigurations[currentClass];
+            player = {
+                x: 1200, // Spawn centered in Leipzig
+                y: 320,
+                targetY: 320,
+                width: 30,
+                height: 50,
+                maxHp: config.hp,
+                hp: config.hp,
+                speed: config.speed,
+                facing: 1,
+                isSwinging: false,
+                swingTimer: 0,
+                buffed: false,
+                buffTimer: 0,
+                isCharging: false,
+                chargeTimer: 0,
+                wardTimer: 0
+            };
+
+            zombies = [];
+            bullets = [];
+            particles = [];
+            barricades = [];
+            floatingTexts = []; 
+            keys = {};
+            wave = 1;
+            primaryCooldown = 0;
+            abilityCooldown = 0;
+            combatTimer = 0;
+            currentLocation = "outdoor";
+            cameraX = player.x - canvas.width / 2; // Initialize camera directly centered
+            gameActive = true;
+            cannonCooldown = 0;
+            suppliesCooldown = 0;
+            window.indoorTrickleTimer = 0;
+
+            document.getElementById("game-over").classList.add("hidden");
+            document.getElementById("class-display").innerText = config.name;
+            document.getElementById("location-display").innerText = "OUTDOORS";
+            
+            const abUI = document.getElementById("ability-ui");
+            const hasAbility = ['sapper', 'officer', 'cuirassier', 'chaplain', 'seaman', 'medic'].includes(currentClass);
+            if (hasAbility) {
+                abUI.classList.remove("hidden");
+            } else {
+                abUI.classList.add("hidden");
+            }
+
+            spawnWave();
+        }
+
+        // Keyboard Inputs
+        window.addEventListener("keydown", (e) => keys[e.key.toLowerCase()] = true);
+        window.addEventListener("keyup", (e) => keys[e.key.toLowerCase()] = false);
+
+        window.addEventListener("keydown", (e) => {
+            if (e.key === "Shift" && gameActive) {
+                useAbility();
+            }
+            if (e.key === " " && gameActive && player && !player.isSwinging) {
+                meleeAttack(currentClass === 'sapper' ? 'axe' : (currentClass === 'seaman' ? 'cutlass' : 'sabre'));
+            }
+            if (e.key === "e" && gameActive) {
+                window.triggerActionPrompt();
+            }
+        });
+
+        // Mouse clicks on canvas
+        canvas.addEventListener("mousedown", (e) => {
+            if (!gameActive) return;
+            if (e.button === 0) {
+                usePrimaryAction();
+            }
+        });
+        canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+        // iPad / Mobile On-Screen Virtual Button Triggers
+        function setupTouchControllers() {
+            const btnLeft = document.getElementById("btn-left");
+            const btnRight = document.getElementById("btn-right");
+            const btnPrimary = document.getElementById("btn-primary");
+            const btnMelee = document.getElementById("btn-melee");
+            const btnAbility = document.getElementById("btn-ability");
+
+            const bindTouch = (el, onStart, onEnd) => {
+                el.addEventListener("touchstart", (e) => {
+                    e.preventDefault();
+                    onStart();
+                }, { passive: false });
+
+                el.addEventListener("touchend", (e) => {
+                    e.preventDefault();
+                    onEnd();
+                }, { passive: false });
+            };
+
+            bindTouch(btnLeft, () => { keys['a'] = true; }, () => { keys['a'] = false; });
+            bindTouch(btnRight, () => { keys['d'] = true; }, () => { keys['d'] = false; });
+
+            btnPrimary.addEventListener("touchstart", (e) => {
+                e.preventDefault();
+                if (gameActive) usePrimaryAction();
+            }, { passive: false });
+
+            btnMelee.addEventListener("touchstart", (e) => {
+                e.preventDefault();
+                if (gameActive && player && !player.isSwinging) {
+                    meleeAttack(currentClass === 'sapper' ? 'axe' : (currentClass === 'seaman' ? 'cutlass' : 'sabre'));
+                }
+            }, { passive: false });
+
+            btnAbility.addEventListener("touchstart", (e) => {
+                e.preventDefault();
+                if (gameActive) useAbility();
+            }, { passive: false });
+        }
+
+        setupTouchControllers();
+
+        // Handle transitions into or out of building interiors
+        window.triggerActionPrompt = function() {
+            if (!gameActive || !activeActionType || !player) return;
+
+            playSynthSound('door');
+            transitionFade = 30; // Initiate screen fade duration
+
+            // Clear projectiles during location transition
+            bullets = [];
+
+            if (activeActionType === "enter_tavern") {
+                currentLocation = "tavern";
+                player.x = 100; // Spawn near internal left door
+                player.facing = 1;
+                document.getElementById("location-display").innerText = "RUINED TAVERN";
+            } else if (activeActionType === "enter_cathedral") {
+                currentLocation = "cathedral";
+                player.x = 100;
+                player.facing = 1;
+                document.getElementById("location-display").innerText = "LEIPZIG CATHEDRAL";
+            } else if (activeActionType === "enter_watchtower") {
+                currentLocation = "watchtower";
+                player.x = 100;
+                player.facing = 1;
+                document.getElementById("location-display").innerText = "FORTIFIED WATCHTOWER";
+            } else if (activeActionType === "exit_building") {
+                // Exit point - spawn exactly outside the corresponding door coordinates
+                if (currentLocation === "tavern") {
+                    currentLocation = "outdoor";
+                    player.x = 350;
+                } else if (currentLocation === "cathedral") {
+                    currentLocation = "outdoor";
+                    player.x = 1250;
+                } else if (currentLocation === "watchtower") {
+                    currentLocation = "outdoor";
+                    player.x = 1950;
+                }
+                player.facing = 1;
+                document.getElementById("location-display").innerText = "OUTDOORS";
+            } else if (activeActionType === "tavern_supplies") {
+                if (suppliesCooldown <= 0) {
+                    const healAmt = 35;
+                    player.hp = Math.min(player.maxHp, player.hp + healAmt);
+                    suppliesCooldown = 900; // 15 second cooldown
+                    playSynthSound('bandage');
+                    
+                    floatingTexts.push({
+                        x: player.x + 15,
+                        y: player.y - 15,
+                        text: `+${healAmt} HP SUPPLIES`,
+                        color: "#22c55e",
+                        life: 60
+                    });
+
+                    for (let i = 0; i < 12; i++) {
+                        particles.push({
+                            x: player.x + 15,
+                            y: player.y + 20,
+                            dx: (Math.random() - 0.5) * 3,
+                            dy: -Math.random() * 3,
+                            radius: Math.random() * 2 + 1.5,
+                            alpha: 1,
+                            color: "rgba(34,197,94,"
+                        });
+                    }
+                }
+            } else if (activeActionType === "watchtower_cannon") {
+                if (cannonCooldown <= 0) {
+                    cannonCooldown = 720; // 12s reload
+                    playSynthSound('cannon');
+
+                    // Spawn huge blast particles
+                    for (let i = 0; i < 25; i++) {
+                        particles.push({
+                            x: 1100,
+                            y: 180,
+                            dx: -Math.random() * 8 - 2, // blast leftwards
+                            dy: (Math.random() - 0.5) * 4,
+                            radius: Math.random() * 8 + 3,
+                            alpha: 1,
+                            color: "rgba(249,115,22,"
+                        });
+                    }
+
+                    // Shell projectile launched to clear the watchtower ramp
+                    bullets.push({
+                        x: 1080,
+                        y: 180,
+                        dx: -14,
+                        dy: 0.8, // falls slightly
+                        width: 14,
+                        height: 14,
+                        damage: 300,
+                        isCannonball: true
+                    });
+                }
+            }
+
+            // Immediately check and hide prompt to prevent double inputs
+            activeActionType = null;
+            document.getElementById("action-prompt").classList.add("hidden");
+        };
+
+        function usePrimaryAction() {
+            if (!player || primaryCooldown > 0) return;
+
+            const weaponType = classConfigurations[currentClass].primary;
+            if (weaponType === "musket") {
+                shootWeapon(12, 140, 110, "musket", 1); 
+            } else if (weaponType === "pistol") {
+                shootWeapon(10, 80, 55, "pistol", 1); 
+            } else if (weaponType === "blunderbuss") {
+                shootSpread(10, 50, 140, "blunderbuss", 5); 
+            } else if (weaponType === "axe") {
+                meleeAttack("axe");
+            } else if (weaponType === "sabre") {
+                meleeAttack("sabre");
+            } else if (weaponType === "pallasch") {
+                meleeAttack("pallasch"); 
+            }
+        }
+
+        function shootWeapon(velocity, damage, baseCooldown, sound, projectileCount) {
+            primaryCooldown = player.buffed ? Math.floor(baseCooldown / 1.8) : baseCooldown;
+            combatTimer = 180;
+            playSynthSound(sound);
+
+            bullets.push({
+                x: player.facing === 1 ? player.x + player.width : player.x - 8,
+                y: player.y + 20,
+                dx: player.facing * velocity,
+                dy: 0,
+                width: 8,
+                height: 4,
+                damage: damage
+            });
+
+            for(let i = 0; i < 10; i++) {
+                particles.push({
+                    x: player.facing === 1 ? player.x + player.width : player.x,
+                    y: player.y + 20,
+                    dx: player.facing * (Math.random() * 3 + 1.5),
+                    dy: (Math.random() - 0.5) * 2,
+                    radius: Math.random() * 3.5 + 2,
+                    alpha: 1,
+                    color: "rgba(220,220,220,"
+                });
+            }
+        }
+
+        function shootSpread(velocity, damage, baseCooldown, sound, projectileCount) {
+            primaryCooldown = player.buffed ? Math.floor(baseCooldown / 1.8) : baseCooldown;
+            combatTimer = 180;
+            playSynthSound(sound);
+
+            for (let i = 0; i < projectileCount; i++) {
+                let angleOffset = (i - (projectileCount - 1) / 2) * 1.5; 
+                bullets.push({
+                    x: player.facing === 1 ? player.x + player.width : player.x - 8,
+                    y: player.y + 20,
+                    dx: player.facing * velocity,
+                    dy: angleOffset + (Math.random() - 0.5) * 1,
+                    width: 6,
+                    height: 4,
+                    damage: damage
+                });
+            }
+
+            for(let i = 0; i < 18; i++) {
+                particles.push({
+                    x: player.facing === 1 ? player.x + player.width : player.x,
+                    y: player.y + 20,
+                    dx: player.facing * (Math.random() * 5 + 1),
+                    dy: (Math.random() - 0.5) * 4,
+                    radius: Math.random() * 5 + 3,
+                    alpha: 1,
+                    color: "rgba(180,180,180,"
+                });
+            }
+        }
+
+        function meleeAttack(type) {
+            if (!player) return;
+            player.isSwinging = true;
+            let actionDuration = player.buffed ? 6 : 12;
+            player.swingTimer = actionDuration;
+            primaryCooldown = actionDuration;
+            combatTimer = 180;
+            playSynthSound(type);
+
+            let range = type === 'axe' ? 65 : (type === 'cutlass' ? 70 : (type === 'pallasch' ? 75 : 70));
+            let dmg = type === 'axe' ? 125 : (type === 'cutlass' ? 80 : (type === 'pallasch' ? 90 : 65));
+            
+            let attackLeft, attackRight;
+            if (player.facing === 1) {
+                attackLeft = player.x - 15;
+                attackRight = player.x + player.width + range;
+            } else {
+                attackLeft = player.x - range;
+                attackRight = player.x + player.width + 15;
+            }
+
+            zombies.forEach(zombie => {
+                if (zombie.location !== currentLocation) return;
+                if (zombie.x + zombie.width > attackLeft && zombie.x < attackRight &&
+                    zombie.y + zombie.height > player.y && zombie.y < player.y + player.height) {
+                    
+                    zombie.hp -= dmg;
+                    zombie.flashTimer = 10;
+                    zombie.x += player.facing * 18; 
+                    createSplatter(zombie.x + zombie.width / 2, zombie.y + zombie.height / 2, "rgba(139,0,0,");
+
+                    floatingTexts.push({
+                        x: zombie.x + zombie.width / 2,
+                        y: zombie.y - 10,
+                        text: `-${dmg}`,
+                        color: "#f87171",
+                        life: 45
+                    });
+                }
+            });
+        }
+
+        function useAbility() {
+            if (!player || abilityCooldown > 0) return;
+
+            if (currentClass === 'sapper') {
+                let bx = player.facing === 1 ? player.x + player.width + 10 : player.x - 30;
+                barricades.push({ x: bx, y: 310, width: 20, height: 60, hp: 160, location: currentLocation });
+                abilityCooldown = 360; 
+            } else if (currentClass === 'medic') {
+                const healAmount = 50;
+                const originalHp = player.hp;
+                player.hp = Math.min(player.maxHp, player.hp + healAmount);
+                const actualHealed = Math.round(player.hp - originalHp);
+                abilityCooldown = 480; 
+                playSynthSound('bandage');
+
+                for(let i = 0; i < 15; i++) {
+                    particles.push({
+                        x: player.x + player.width/2 + (Math.random() - 0.5) * 20,
+                        y: player.y + player.height/2 + (Math.random() - 0.5) * 25,
+                        dx: (Math.random() - 0.5) * 1.5,
+                        dy: -Math.random() * 2 - 0.8,
+                        radius: Math.random() * 3 + 2,
+                        alpha: 1,
+                        color: "rgba(34,197,94," 
+                    });
+                }
+
+                floatingTexts.push({
+                    x: player.x + player.width / 2,
+                    y: player.y - 15,
+                    text: `+${actualHealed} HP (BANDAGE)`,
+                    color: "#22c55e",
+                    life: 60
+                });
+            } else if (currentClass === 'officer') {
+                player.buffed = true;
+                player.buffTimer = 240; 
+                abilityCooldown = 540; 
+                for(let i = 0; i < 15; i++) {
+                    createSplatter(player.x + 15, player.y + 20, "rgba(245,158,11,");
+                }
+            } else if (currentClass === 'cuirassier') {
+                player.isCharging = true;
+                player.chargeTimer = 22; 
+                abilityCooldown = 480; 
+                playSynthSound('pallasch');
+            } else if (currentClass === 'chaplain') {
+                player.wardTimer = 30; 
+                abilityCooldown = 420; 
+                playSynthSound('ward');
+
+                zombies.forEach(zombie => {
+                    if (zombie.location !== currentLocation) return;
+                    let distance = Math.abs(zombie.x - player.x);
+                    if (distance < 200) {
+                        zombie.hp -= 40; 
+                        zombie.flashTimer = 15;
+                        zombie.stunTimer = 150; 
+                        zombie.x += (zombie.x > player.x ? 1 : -1) * 85; 
+                        createSplatter(zombie.x + zombie.width/2, zombie.y + 15, "rgba(168,85,247,");
+
+                        floatingTexts.push({
+                            x: zombie.x + zombie.width / 2,
+                            y: zombie.y - 10,
+                            text: `-40 HOLY`,
+                            color: "#c084fc",
+                            life: 50
+                        });
+                    }
+                });
+            } else if (currentClass === 'seaman') {
+                abilityCooldown = 600; 
+                playSynthSound('nock');
+
+                for (let i = 0; i < 7; i++) {
+                    bullets.push({
+                        x: player.facing === 1 ? player.x + player.width : player.x - 10,
+                        y: player.y + 10 + i * 4,
+                        dx: player.facing * 13,
+                        dy: 0,
+                        width: 10,
+                        height: 4,
+                        damage: 45
+                    });
+                }
+                player.x -= player.facing * 35;
+                for(let i = 0; i < 25; i++) {
+                    particles.push({
+                        x: player.facing === 1 ? player.x + player.width : player.x,
+                        y: player.y + 20,
+                        dx: player.facing * (Math.random() * 6 + 2),
+                        dy: (Math.random() - 0.5) * 5,
+                        radius: Math.random() * 6 + 3,
+                        alpha: 1,
+                        color: "rgba(255,235,200,"
+                    });
+                }
+            }
+        }
+
+        function spawnWave() {
+            let count = 4 + wave * 2;
+            for (let i = 0; i < count; i++) {
+                let x;
+                let loc = "outdoor";
+                let spawnOrigin = Math.random();
+
+                // 50% chance of spawning indoors directly if player is holding indoors
+                if (currentLocation !== "outdoor" && spawnOrigin < 0.50) {
+                    loc = currentLocation;
+                    x = Math.random() > 0.5 ? 1150 : 150; // spawn from back windows/hallways inside
+                } else {
+                    // Standard outdoor borders
+                    if (spawnOrigin < 0.45) {
+                        x = Math.random() > 0.5 ? WORLD_WIDTH_OUTDOOR + Math.random() * 300 : -Math.random() * 300;
+                    } else {
+                        const targetBuilding = buildings[Math.floor(Math.random() * buildings.length)];
+                        x = targetBuilding.doorX;
+                        
+                        // Wood splinter explosion particle effect outside building
+                        for (let s = 0; s < 8; s++) {
+                            particles.push({
+                                x: targetBuilding.doorX + 15,
+                                y: 340,
+                                dx: (Math.random() - 0.5) * 5,
+                                dy: (Math.random() - 1.2) * 4,
+                                radius: Math.random() * 3 + 1.5,
+                                alpha: 1,
+                                color: "rgba(139,90,43," 
+                            });
+                        }
+                    }
+                }
+                
+                let rand = Math.random();
+                let type = "regular";
+                let hp = 85 + (wave * 12);
+                let speed = 0.8 + Math.random() * 0.5 + (wave * 0.08);
+
+                if (wave >= 2 && rand < 0.25) {
+                    type = "runner"; 
+                    hp = 45 + (wave * 6);
+                    speed = 2.0 + Math.random() * 0.6 + (wave * 0.1);
+                } else if (wave >= 3 && rand >= 0.25 && rand < 0.45) {
+                    type = "bomber"; 
+                    hp = 50;
+                    speed = 0.7 + Math.random() * 0.3;
+                } else if (wave >= 4 && rand >= 0.45 && rand < 0.65) {
+                    type = "zapper"; 
+                    hp = 180 + (wave * 15);
+                    speed = 0.5 + Math.random() * 0.3;
+                }
+
+                zombies.push({
+                    x: x, 
+                    y: 320, 
+                    width: 30, 
+                    height: 50,
+                    speed: speed,
+                    hp: hp, 
+                    maxHp: hp,
+                    type: type,
+                    flashTimer: 0,
+                    stunTimer: 0,
+                    igniteTimer: 0,
+                    location: loc
+                });
+            }
+        }
+
+        function createSplatter(x, y, colorBase) {
+            for(let i = 0; i < 8; i++) {
+                particles.push({
+                    x: x, 
+                    y: y,
+                    dx: (Math.random() - 0.5) * 5, 
+                    dy: (Math.random() - 0.7) * 4,
+                    radius: Math.random() * 3 + 1.2, 
+                    alpha: 1, 
+                    color: colorBase
+                });
+            }
+        }
+
+        function update() {
+            if (!gameActive || !player) return;
+
+            // Reduce visual screen fade timer
+            if (transitionFade > 0) transitionFade--;
+
+            // Tick and process building specific cooldowns
+            if (cannonCooldown > 0) cannonCooldown--;
+            if (suppliesCooldown > 0) suppliesCooldown--;
+
+            if (combatTimer > 0) combatTimer--;
+            
+            // Medical passive health restoration (Out-of-combat or inside Cathedral Holy Altar)
+            let maxRecoveryScale = 0.12;
+            let nearAltar = (currentLocation === "cathedral" && player.x >= 530 && player.x <= 670);
+            
+            if (nearAltar) {
+                maxRecoveryScale = 0.35; // Accelerated Holy Healing
+                if (abilityCooldown > 0) abilityCooldown = Math.max(0, abilityCooldown - 1); // faster ability load
+                // Generate glowing white sparks
+                if (Math.random() < 0.15) {
+                    particles.push({
+                        x: player.x + Math.random() * player.width,
+                        y: player.y + player.height,
+                        dx: (Math.random() - 0.5) * 1,
+                        dy: -Math.random() * 2,
+                        radius: Math.random() * 3 + 1,
+                        alpha: 1,
+                        color: "rgba(255,255,255,"
+                    });
+                }
+            }
+
+            if ((currentClass === 'medic' && combatTimer <= 0) || nearAltar) {
+                if (player.hp < player.maxHp) {
+                    player.hp += maxRecoveryScale;
+                }
+            }
+
+            if (player.wardTimer > 0) player.wardTimer--;
+
+            // Cuirassier active charge mechanics
+            if (player.isCharging) {
+                player.x += player.facing * 10;
+                player.chargeTimer--;
+                combatTimer = 180;
+
+                zombies.forEach(z => {
+                    if (z.location !== currentLocation) return;
+                    if (z.x + z.width > player.x && z.x < player.x + player.width) {
+                        z.hp -= 4.5; 
+                        z.flashTimer = 8;
+                        z.x += player.facing * 18; 
+                        createSplatter(z.x + z.width / 2, z.y + z.height / 2, "rgba(220,220,220,");
+                    }
+                });
+
+                if (player.chargeTimer <= 0) {
+                    player.isCharging = false;
+                }
+            }
+
+            if (player.buffed) {
+                player.buffTimer--;
+                if (player.buffTimer <= 0) player.buffed = false;
+            }
+
+            if (primaryCooldown > 0) primaryCooldown--;
+            if (abilityCooldown > 0) abilityCooldown--;
+
+            // Move
+            let activeSpeed = player.buffed ? player.speed * 1.35 : player.speed;
+            if (!player.isCharging) { 
+                if (keys['a'] || keys['arrowleft']) { player.x -= activeSpeed; player.facing = -1; }
+                if (keys['d'] || keys['arrowright']) { player.x += activeSpeed; player.facing = 1; }
+            }
+
+            // Map margins based on location
+            const maxWorldWidth = currentLocation === "outdoor" ? WORLD_WIDTH_OUTDOOR : WORLD_WIDTH_INDOOR;
+            player.x = Math.max(0, Math.min(maxWorldWidth - player.width, player.x));
+
+            // Watchtower Multi-level staircase / balcony climbing simulation
+            if (currentLocation === "watchtower") {
+                if (player.x >= 400 && player.x <= 700) {
+                    // Stair ramp adjusts target height linearly
+                    player.targetY = 320 - ((player.x - 400) / 300) * 140;
+                } else if (player.x > 700) {
+                    // Elevated Balcony height
+                    player.targetY = 180;
+                } else {
+                    // Normal Ground level
+                    player.targetY = 320;
+                }
+                // Smooth interpolation for fluid movement up/down stairs
+                player.y += (player.targetY - player.y) * 0.2;
+            } else {
+                player.y = 320;
+            }
+
+            // Dynamic camera movement
+            cameraX = player.x - canvas.width / 2;
+            cameraX = Math.max(0, Math.min(maxWorldWidth - canvas.width, cameraX));
+
+            if (player.isSwinging) {
+                player.swingTimer--;
+                if (player.swingTimer <= 0) player.isSwinging = false;
+            }
+
+            // Bullet projectiles loop
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                let b = bullets[i]; 
+                b.x += b.dx;
+                b.y += b.dy;
+                let hit = false;
+
+                if (b.isCannonball) {
+                    // Spawn visual trail embers
+                    if (Math.random() < 0.6) {
+                        particles.push({
+                            x: b.x + 7,
+                            y: b.y + 7,
+                            dx: (Math.random() - 0.5) * 2,
+                            dy: (Math.random() - 0.5) * 2,
+                            radius: Math.random() * 4 + 1.5,
+                            alpha: 1,
+                            color: "rgba(249,115,22,"
+                        });
+                    }
+                }
+
+                for (let j = zombies.length - 1; j >= 0; j--) {
+                    let z = zombies[j];
+                    if (z.location !== currentLocation) continue;
+
+                    if (b.x + b.width > z.x && b.x < z.x + z.width && b.y + b.height > z.y && b.y < z.y + z.height) {
+                        
+                        if (b.isCannonball) {
+                            // Heavy Cannon detonation wipes out clusters
+                            hit = true;
+                            playSynthSound('explosion');
+                            // Splash explosion particles
+                            for(let k=0; k<25; k++) {
+                                particles.push({
+                                    x: b.x + 7,
+                                    y: b.y + 7,
+                                    dx: (Math.random() - 0.5) * 10,
+                                    dy: (Math.random() - 0.5) * 10,
+                                    radius: Math.random() * 6 + 2,
+                                    alpha: 1,
+                                    color: "rgba(239,68,68,"
+                                });
+                            }
+
+                            // Splash Area damage
+                            zombies.forEach(subZ => {
+                                if (subZ.location !== currentLocation) return;
+                                let splashDist = Math.abs(subZ.x - b.x);
+                                if (splashDist < 180) {
+                                    subZ.hp -= 300;
+                                    subZ.flashTimer = 15;
+                                    subZ.x += (subZ.x > b.x ? 1 : -1) * 60;
+                                    createSplatter(subZ.x + 15, subZ.y + 15, "rgba(139,0,0,");
+                                    floatingTexts.push({
+                                        x: subZ.x + 15,
+                                        y: subZ.y - 10,
+                                        text: "-300 CANNON",
+                                        color: "#f87171",
+                                        life: 50
+                                    });
+                                }
+                            });
+                            break;
+                        }
+
+                        if (z.type === "zapper" && Math.random() < 0.4) {
+                            let reducedDmg = Math.ceil(b.damage * 0.4);
+                            z.hp -= reducedDmg; 
+                            createSplatter(z.x + 15, z.y + 10, "rgba(148,163,184,"); 
+                            
+                            floatingTexts.push({
+                                x: z.x + z.width / 2,
+                                y: z.y - 12,
+                                text: `BLOCKED! -${reducedDmg}`,
+                                color: "#94a3b8",
+                                life: 45
+                            });
+                        } else {
+                            z.hp -= b.damage;
+                            createSplatter(z.x + z.width / 2, z.y + z.height / 2, "rgba(139,0,0,");
+
+                            floatingTexts.push({
+                                x: z.x + z.width / 2,
+                                y: z.y - 12,
+                                text: `-${Math.ceil(b.damage)}`,
+                                color: "#f87171",
+                                life: 45
+                            });
+                        }
+
+                    z.flashTimer = 10;
+                    z.x += (b.dx > 0 ? 1 : -1) * 12; 
+                    hit = true; 
+                    break;
+                }
+            }
+            if (hit || b.x < 0 || b.x > maxWorldWidth || b.y < 0 || b.y > canvas.height) bullets.splice(i, 1);
+        }
+
+        for (let i = barricades.length - 1; i >= 0; i--) {
+            if (barricades[i].hp <= 0) barricades.splice(i, 1);
+        }
+
+        // Check interaction proximities based on player location
+        activeActionType = null;
+        document.getElementById("action-prompt").classList.add("hidden");
+
+        if (currentLocation === "outdoor") {
+            // Check if near any building doors
+            buildings.forEach(b => {
+                if (Math.abs(player.x - b.doorX) < 45) {
+                    activeActionType = "enter_" + b.id;
+                    document.getElementById("action-prompt-text").innerText = `ENTER ${b.name}`;
+                    document.getElementById("action-prompt").classList.remove("hidden");
+                }
+            });
+        } else {
+            // If inside any building, check if near exit door (x = 100)
+            if (player.x < 150) {
+                activeActionType = "exit_building";
+                document.getElementById("action-prompt-text").innerText = "EXIT BUILDING";
+                document.getElementById("action-prompt").classList.remove("hidden");
+            }
+
+            // Tavern-specific: interactive supply bag
+            if (currentLocation === "tavern" && Math.abs(player.x - 1100) < 60) {
+                activeActionType = "tavern_supplies";
+                const statusText = suppliesCooldown > 0 ? `RELOADING (${Math.ceil(suppliesCooldown/60)}s)` : "RESTOCK HP (+35)";
+                document.getElementById("action-prompt-text").innerText = statusText;
+                document.getElementById("action-prompt").classList.remove("hidden");
+            }
+
+            // Watchtower-specific: Fortress Cannon
+            if (currentLocation === "watchtower" && player.x > 1020 && player.y < 220) {
+                activeActionType = "watchtower_cannon";
+                const statusText = cannonCooldown > 0 ? `RELOADING (${Math.ceil(cannonCooldown/60)}s)` : "FIRE FORTRESS CANNON";
+                document.getElementById("action-prompt-text").innerText = statusText;
+                document.getElementById("action-prompt").classList.remove("hidden");
+            }
+        } // <--- CORRECTLY PLACED BRACKET TO RESOLVE THE MISSING SCOPE CRASH!
+
+        // Dynamic indoor trickle spawn to keep camping inside buildings active and tense
+        if (currentLocation !== "outdoor" && gameActive) {
+            if (!window.indoorTrickleTimer) window.indoorTrickleTimer = 0;
+            window.indoorTrickleTimer++;
+
+            // Every 8 seconds (480 frames), if there are less than 4 zombies in this room, spawn one!
+            const zombiesInRoom = zombies.filter(z => z.location === currentLocation).length;
+            if (window.indoorTrickleTimer > 480 && zombiesInRoom < 4) {
+                window.indoorTrickleTimer = 0;
+                
+                let spawnX = Math.random() > 0.5 ? 1150 : 150; // spawn near window/hall
+                let rand = Math.random();
+                let type = "regular";
+                let hp = 85 + (wave * 12);
+                let speed = 0.8 + Math.random() * 0.5 + (wave * 0.08);
+
+                if (wave >= 2 && rand < 0.25) {
+                    type = "runner"; 
+                    hp = 45 + (wave * 6);
+                    speed = 2.0 + Math.random() * 0.6 + (wave * 0.1);
+                } else if (wave >= 3 && rand >= 0.25 && rand < 0.45) {
+                    type = "bomber"; 
+                    hp = 50;
+                    speed = 0.7 + Math.random() * 0.3;
+                }
+
+                zombies.push({
+                    x: spawnX, 
+                    y: currentLocation === "watchtower" && spawnX > 700 ? 180 : 320, 
+                    width: 30, 
+                    height: 50,
+                    speed: speed,
+                    hp: hp, 
+                    maxHp: hp,
+                    type: type,
+                    flashTimer: 0,
+                    stunTimer: 0,
+                    igniteTimer: 0,
+                    location: currentLocation
+                });
+
+                for (let s = 0; s < 5; s++) {
+                    particles.push({
+                        x: spawnX,
+                        y: 340,
+                        dx: (Math.random() - 0.5) * 4,
+                        dy: -Math.random() * 3,
+                        radius: Math.random() * 2 + 1,
+                        alpha: 1,
+                        color: "rgba(139,90,43,"
+                    });
+                }
+            }
+        }
+
+        // Tavern fireplace burns zombies (x = 900)
+        if (currentLocation === "tavern") {
+            zombies.forEach(z => {
+                if (z.location === "tavern" && z.x >= 860 && z.x <= 940) {
+                    z.hp -= 1.2; // intense burns
+                    z.flashTimer = 5;
+                    if (Math.random() < 0.2) {
+                        particles.push({
+                            x: z.x + Math.random() * z.width,
+                            y: z.y + Math.random() * z.height,
+                            dx: (Math.random() - 0.5) * 1.5,
+                            dy: -Math.random() * 2,
+                            radius: Math.random() * 2.5 + 1.2,
+                            alpha: 1,
+                            color: "rgba(249,115,22,"
+                        });
+                    }
+                }
+            });
+        }
+
+        // Update Zombie logic
+        for (let i = zombies.length - 1; i >= 0; i--) {
+            let z = zombies[i];
+
+            // Smart Pathfinding & Location-aware Transitions:
+            // 1. Transition: Outdoor zombie reaches the door of the building the player is inside -> Breaches inside!
+            if (z.location === "outdoor" && currentLocation !== "outdoor") {
+                const targetBuilding = buildings.find(b => b.id === currentLocation);
+                if (targetBuilding && Math.abs(z.x - targetBuilding.doorX) < 15) {
+                    z.location = currentLocation;
+                    z.x = 120; // Spawn near exit inside
+                    z.y = 320;
+                    for (let s = 0; s < 6; s++) {
+                        particles.push({
+                            x: 120,
+                            y: 340,
+                            dx: Math.random() * 4,
+                            dy: (Math.random() - 0.5) * 3,
+                            radius: Math.random() * 2.5 + 1.5,
+                            alpha: 1,
+                            color: "rgba(139,90,43,"
+                        });
+                    }
+                }
+            }
+
+            // 2. Transition: Indoor zombie reaches exit door while player is outside -> Walks out onto the streets!
+            if (z.location !== "outdoor" && currentLocation === "outdoor") {
+                if (z.x < 120) {
+                    const originBuilding = buildings.find(b => b.id === z.location);
+                    if (originBuilding) {
+                        z.location = "outdoor";
+                        z.x = originBuilding.doorX;
+                        z.y = 320;
+                        for (let s = 0; s < 6; s++) {
+                            particles.push({
+                                x: originBuilding.doorX,
+                                y: 340,
+                                dx: (Math.random() - 0.5) * 4,
+                                dy: (Math.random() - 0.5) * 3,
+                                radius: Math.random() * 2.5 + 1.5,
+                                alpha: 1,
+                                color: "rgba(139,90,43,"
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (z.hp <= 0) { 
+                if (z.type === "bomber") {
+                    detonateBomber(z);
+                }
+                zombies.splice(i, 1); 
+                continue; 
+            }
+
+            // If zombie is not in player's current room, and they are outside while player is inside,
+            // or inside while player is outside, they navigate toward the doors to find the player!
+            let targetX = player.x;
+
+            if (z.location !== currentLocation) {
+                if (z.location === "outdoor") {
+                    // Player is inside. Go to the door of that building.
+                    const targetBuilding = buildings.find(b => b.id === currentLocation);
+                    if (targetBuilding) {
+                        targetX = targetBuilding.doorX;
+                    }
+                } else {
+                    // Zombie is inside, player is outside. Go to the exit door (x = 100).
+                    targetX = 100;
+                }
+            }
+
+            if (z.stunTimer > 0) {
+                z.stunTimer--;
+                continue; 
+            }
+
+            if (z.type === "bomber" && z.igniteTimer > 0) {
+                z.igniteTimer--;
+                if (z.igniteTimer <= 0) {
+                    detonateBomber(z);
+                    zombies.splice(i, 1);
+                    continue;
+                }
+            }
+
+            let barricaded = false;
+            barricades.forEach(b => {
+                if (b.location !== z.location) return; // Compare to zombie location, not currentLocation
+                if (z.x + z.width > b.x && z.x < b.x + b.width) {
+                    barricaded = true;
+                    
+                    if (z.type === "bomber" && z.igniteTimer === 0) {
+                        z.igniteTimer = 45; 
+                    } else {
+                        b.hp -= z.type === "zapper" ? 0.8 : 0.35; 
+                        createSplatter(b.x + b.width / 2, b.y + 15, "rgba(115,75,45,");
+                    }
+                }
+            });
+
+            if (!barricaded) {
+                // Elevated path climbing logic based on the zombie's actual location
+                if (z.location === "watchtower") {
+                    if (z.x >= 400 && z.x <= 700) {
+                        z.y = 320 - ((z.x - 400) / 300) * 140;
+                    } else if (z.x > 700) {
+                        z.y = 180;
+                    } else {
+                        z.y = 320;
+                    }
+                } else {
+                    z.y = 320;
+                }
+
+                if (z.x < targetX) z.x += z.speed; 
+                else z.x -= z.speed;
+            }
+
+            // Zombie only attacks player if they are in the exact same location/room!
+            if (z.location === currentLocation && z.x + z.width > player.x && z.x < player.x + player.width && Math.abs(z.y - player.y) < 45) {
+                if (z.type === "bomber" && z.igniteTimer === 0) {
+                    z.igniteTimer = 35; 
+                } else {
+                    let baseDmg = z.type === "zapper" ? 0.85 : (z.type === "runner" ? 0.3 : 0.45);
+                    if (currentClass === 'cuirassier') baseDmg *= 0.75; 
+                    player.hp -= baseDmg;
+                    combatTimer = 180;
+                    if (Math.random() < 0.05) playSynthSound('hurt');
+                    
+                    if (player.hp <= 0) {
+                        player.hp = 0; 
+                        gameActive = false;
+                        document.getElementById("final-wave").innerText = wave;
+                        document.getElementById("game-over").classList.remove("hidden");
+                    }
+                }
+            }
+        }
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i]; 
+            p.x += p.dx; 
+            p.y += p.dy; 
+            p.dy += 0.1; 
+            p.alpha -= 0.02;
+            if (p.alpha <= 0) particles.splice(i, 1);
+        }
+
+        for (let i = floatingTexts.length - 1; i >= 0; i--) {
+            let ft = floatingTexts[i];
+            ft.y -= 0.6;
+            ft.life--;
+            if (ft.life <= 0) floatingTexts.splice(i, 1);
+        }
+
+        // Auto-advance waves when current location (and all other locations) is cleared of threats
+        if (zombies.length === 0) { 
+            wave++; 
+            spawnWave(); 
+        }
+
+        updateHUD();
+    }
+
+    function updateHUD() {
+        if (!player) return;
+        const hpRatio = Math.max(0, (player.hp / player.maxHp) * 100);
+        document.getElementById("hp-display").innerText = Math.ceil(hpRatio) + "%";
+        document.getElementById("hp-bar").style.width = hpRatio + "%";
+        document.getElementById("wave-display").innerText = wave;
+        document.getElementById("zombies-display").innerText = zombies.length;
+        
+        const weaponType = classConfigurations[currentClass].primary;
+        const ammoIndicator = document.getElementById("ammo-display");
+        
+        if (weaponType === 'musket' || weaponType === 'pistol' || weaponType === 'blunderbuss') {
+            if (primaryCooldown === 0) {
+                ammoIndicator.innerText = "Ready to Fire";
+                ammoIndicator.className = "font-bold text-green-400";
+            } else {
+                ammoIndicator.innerText = "Chambering Round...";
+                ammoIndicator.className = "font-bold text-amber-500 animate-pulse";
+            }
+        } else {
+            ammoIndicator.innerText = "Melee Weapon Ready";
+            ammoIndicator.className = "font-bold text-green-400";
+        }
+        
+        const abIndicator = document.getElementById("ability-display");
+        if (abilityCooldown > 0) {
+            abIndicator.innerText = `Charging (${Math.ceil(abilityCooldown / 60)}s)`;
+            abIndicator.className = "font-bold text-red-500";
+        } else {
+            abIndicator.innerText = "Ready";
+            abIndicator.className = "font-bold text-green-400";
+        }
+    }
+
+    function drawMiniMap() {
+        const mmWidth = 200;
+        const mmHeight = 10;
+        const mmX = (canvas.width - mmWidth) / 2;
+        const mmY = 15;
+
+        // Translucent backing
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.strokeStyle = "rgba(120,50,50,0.4)";
+        ctx.lineWidth = 1;
+        ctx.fillRect(mmX, mmY, mmWidth, mmHeight);
+        ctx.strokeRect(mmX, mmY, mmWidth, mmHeight);
+
+        const activeWidthLimit = currentLocation === "outdoor" ? WORLD_WIDTH_OUTDOOR : WORLD_WIDTH_INDOOR;
+
+        if (currentLocation === "outdoor") {
+            // Draw Buildings as gray segments
+            ctx.fillStyle = "rgba(120,113,108,0.7)";
+            buildings.forEach(b => {
+                const bx = mmX + (b.x / activeWidthLimit) * mmWidth;
+                const bw = (b.width / activeWidthLimit) * mmWidth;
+                ctx.fillRect(bx, mmY + 1, bw, mmHeight - 2);
+            });
+        } else {
+            // Render custom structural points on minimap inside
+            ctx.fillStyle = "rgba(139,92,26,0.7)";
+            if (currentLocation === "tavern") {
+                ctx.fillRect(mmX + (900/1200)*mmWidth, mmY + 1, 10, mmHeight-2); // Fireplace
+            } else if (currentLocation === "cathedral") {
+                ctx.fillRect(mmX + (600/1200)*mmWidth, mmY + 1, 12, mmHeight-2); // Holy Altar
+            } else if (currentLocation === "watchtower") {
+                ctx.fillRect(mmX + (700/1200)*mmWidth, mmY + 1, 40, mmHeight-2); // Balcony
+            }
+        }
+
+        // Draw Zombies in same room as small red notches
+        ctx.fillStyle = "#ef4444";
+        zombies.forEach(z => {
+            if (z.location !== currentLocation) return;
+            const zx = mmX + (z.x / activeWidthLimit) * mmWidth;
+            ctx.fillRect(zx - 1, mmY + 2, 2, mmHeight - 4);
+        });
+
+        // Draw player as flashing yellow indicator
+        ctx.fillStyle = (Math.floor(Date.now() / 250) % 2 === 0) ? "#facc15" : "#eab308";
+        const px = mmX + (player.x / activeWidthLimit) * mmWidth;
+        ctx.fillRect(px - 2, mmY, 4, mmHeight);
+    }
+
+    function drawTavernInterior() {
+        // Tavern Walls (dark weathered timber planks)
+        ctx.fillStyle = "#1c140e";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const worldScrollX = cameraX;
+
+        // Render vertical pillars
+        ctx.fillStyle = "#120b07";
+        for (let px = -worldScrollX; px < WORLD_WIDTH_INDOOR - worldScrollX; px += 240) {
+            ctx.fillRect(px, 0, 15, 370);
+        }
+
+        //Smashed Kegs and Bar Stools
+        ctx.fillStyle = "#2c1d12";
+        ctx.fillRect(100 - worldScrollX, 310, 45, 60); // Exit door
+        ctx.fillStyle = "#090503";
+        ctx.fillRect(105 - worldScrollX, 315, 35, 55);
+
+        // Smashed tavern tables and counters (Choke points/cover art)
+        ctx.fillStyle = "#3e2715";
+        ctx.fillRect(450 - worldScrollX, 290, 160, 80); // Main bar counter
+        ctx.fillStyle = "#20130a";
+        ctx.fillRect(450 - worldScrollX, 280, 160, 10); // Countertop
+
+        //Sack of supplies bag (Restock station)
+        ctx.fillStyle = "#451a03";
+        ctx.fillRect(1100 - worldScrollX, 340, 30, 30);
+        ctx.fillStyle = "#78350f";
+        ctx.beginPath();
+        ctx.arc(1115 - worldScrollX, 340, 15, 0, Math.PI, true);
+        ctx.fill();
+
+        // Smashed cups on bar
+        ctx.fillStyle = "#94a3b8";
+        ctx.fillRect(480 - worldScrollX, 273, 6, 7);
+        ctx.fillRect(560 - worldScrollX, 273, 6, 7);
+
+        // Fireplace (Glows and animated logs)
+        const rx = 900 - worldScrollX;
+        ctx.fillStyle = "#111";
+        ctx.fillRect(rx - 40, 240, 80, 130); // Fireplace cavity
+        ctx.strokeStyle = "#444";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(rx - 40, 240, 80, 130);
+
+        // Blazing coal/wood
+        const fireScale = 0.8 + Math.random() * 0.2;
+        const fireGrad = ctx.createRadialGradient(rx, 340, 5, rx, 340, 45);
+        fireGrad.addColorStop(0, `rgba(249,115,22,${0.85 * fireScale})`);
+        fireGrad.addColorStop(1, "rgba(239,68,68,0)");
+        ctx.fillStyle = fireGrad;
+        ctx.beginPath();
+        ctx.arc(rx, 345, 45, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Logs
+        ctx.fillStyle = "#271b10";
+        ctx.fillRect(rx - 25, 350, 50, 10);
+    }
+
+    function drawCathedralInterior() {
+        // Cathedral Walls (dark gothic masonry stone)
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const worldScrollX = cameraX;
+
+        // Master arches in backdrop
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 3;
+        for (let ax = -worldScrollX; ax < WORLD_WIDTH_INDOOR - worldScrollX; ax += 300) {
+            ctx.beginPath();
+            ctx.moveTo(ax, 370);
+            ctx.lineTo(ax, 140);
+            ctx.quadraticCurveTo(ax + 75, 50, ax + 150, 140);
+            ctx.lineTo(ax + 150, 370);
+            ctx.stroke();
+        }
+
+        // Arched exit doorway
+        ctx.fillStyle = "#020617";
+        ctx.fillRect(100 - worldScrollX, 290, 50, 80);
+        ctx.strokeStyle = "#334155";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(100 - worldScrollX, 290, 50, 80);
+
+        // Gothic Cathedral stained glass window casting ambient violet rays
+        const wx = 600 - worldScrollX;
+        ctx.fillStyle = "rgba(139,92,246,0.15)";
+        ctx.beginPath();
+        ctx.moveTo(wx - 50, 370);
+        ctx.lineTo(wx, 50);
+        ctx.lineTo(wx + 50, 370);
+        ctx.closePath();
+        ctx.fill();
+
+        // Beautiful Rose circular stained pattern on walls
+        ctx.fillStyle = "rgba(168,85,247,0.3)";
+        ctx.beginPath();
+        ctx.arc(600 - worldScrollX, 130, 45, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Holy Altar in center (Holy Aura regeneration zone)
+        const ax = 600 - worldScrollX;
+        ctx.fillStyle = "#334155";
+        ctx.fillRect(ax - 45, 300, 90, 70); // Altar block
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(ax - 48, 296, 96, 4); // White linen cloth
+
+        // Holy glowing cross
+        ctx.fillStyle = "#eab308";
+        ctx.fillRect(ax - 2, 255, 4, 30);
+        ctx.fillRect(ax - 10, 263, 20, 4);
+
+        // Holy beacon light ray
+        const beamGrad = ctx.createLinearGradient(ax - 50, 100, ax + 50, 370);
+        beamGrad.addColorStop(0, "rgba(255,255,255,0)");
+        beamGrad.addColorStop(0.5, "rgba(255,255,255,0.08)");
+        beamGrad.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = beamGrad;
+        ctx.fillRect(ax - 60, 0, 120, 370);
+    }
+
+    function drawWatchtowerInterior() {
+        // Ironstone interior brick walls
+        ctx.fillStyle = "#18181b";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const worldScrollX = cameraX;
+
+        // Solid supporting scaffolding
+        ctx.fillStyle = "#09090b";
+        ctx.fillRect(0, 0, 1200 - worldScrollX, 10); // Ceiling
+        ctx.fillRect(700 - worldScrollX, 180, 500, 190); // Raised balcony floor structure solid backing
+
+        // exit door at x = 100
+        ctx.fillStyle = "#020617";
+        ctx.fillRect(100 - worldScrollX, 310, 45, 60);
+        ctx.strokeStyle = "#52525b";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(100 - worldScrollX, 310, 45, 60);
+
+        // Elegant slanted staircase (x: 400 to 700)
+        ctx.fillStyle = "#27272a";
+        ctx.beginPath();
+        ctx.moveTo(400 - worldScrollX, 370);
+        ctx.lineTo(700 - worldScrollX, 230);
+        ctx.lineTo(700 - worldScrollX, 370);
+        ctx.closePath();
+        ctx.fill();
+
+        // Stair treads details
+        ctx.strokeStyle = "#18181b";
+        ctx.lineWidth = 3;
+        for (let step = 400; step < 700; step += 25) {
+            const stepY = 370 - ((step - 400) / 300) * 140;
+            ctx.beginPath();
+            ctx.moveTo(step - worldScrollX, stepY);
+            ctx.lineTo(step + 25 - worldScrollX, stepY);
+            ctx.stroke();
+        }
+
+        // Balcony Platform wood deck floor
+        ctx.fillStyle = "#3f3f46";
+        ctx.fillRect(700 - worldScrollX, 220, 500, 10);
+
+        // Fortress Cannon on the far right upper platform
+        const cx = 1100 - worldScrollX;
+        ctx.fillStyle = "#27272a";
+        ctx.fillRect(cx - 15, 205, 30, 15); // Cannon Carriage mount
+        ctx.fillStyle = "#71717a";
+        ctx.fillRect(cx - 35, 195, 45, 10); // Cannon Barrel
+        ctx.beginPath();
+        ctx.arc(cx + 10, 200, 5, 0, Math.PI*2); // barrel muzzle
+        ctx.fill();
+    }
+
+    function draw() {
+        // Render specific screen background layout depending on location
+        if (currentLocation === "outdoor") {
+            // Sky Backing
+            ctx.fillStyle = "#0f172a"; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Distant Ruined City Parallax Skyline
+            const parallaxOffset = -(cameraX * 0.25) % 400;
+            ctx.fillStyle = "#020617";
+            for (let xOffset = parallaxOffset - 400; xOffset < canvas.width + 400; xOffset += 400) {
+                ctx.beginPath();
+                ctx.moveTo(xOffset, 370);
+                ctx.lineTo(xOffset + 50, 240); 
+                ctx.lineTo(xOffset + 90, 270);
+                ctx.lineTo(xOffset + 140, 210); // Cathedral spire tower silhouette
+                ctx.lineTo(xOffset + 180, 290);
+                ctx.lineTo(xOffset + 240, 250); 
+                ctx.lineTo(xOffset + 320, 310);
+                ctx.lineTo(xOffset + 400, 370);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            if (!player) return;
+
+            // DRAW WORLD LEVEL BUILDINGS
+            buildings.forEach(b => {
+                const renderX = b.x - cameraX;
+                
+                // Outer Brick Structure Base
+                ctx.fillStyle = b.color;
+                ctx.fillRect(renderX, 370 - b.height, b.width, b.height);
+
+                // Add ruined weathering crack overlays
+                ctx.fillStyle = "#1e1b18";
+                ctx.fillRect(renderX + 40, 370 - b.height + 30, b.width - 80, 10);
+                ctx.fillRect(renderX + 20, 370 - b.height + 110, 15, 45);
+
+                // Glow Windows
+                ctx.fillStyle = "rgba(251,191,36,0.35)";
+                ctx.fillRect(renderX + 35, 370 - b.height + 60, 40, 50);
+                ctx.fillRect(renderX + b.width - 75, 370 - b.height + 60, 40, 50);
+
+                // Dark arched doorway (Zombie spawner origin)
+                ctx.fillStyle = "#090503";
+                ctx.fillRect(b.doorX - cameraX, 310, 45, 60);
+                ctx.strokeStyle = "#5c412f";
+                ctx.lineWidth = 3;
+                ctx.strokeRect(b.doorX - cameraX, 310, 45, 60);
+
+                // Leipzig Cathedral specific gothic windows
+                if (b.name === "Leipzig Cathedral") {
+                    // Rose Window Center Stained Circle
+                    ctx.fillStyle = "rgba(168,85,247,0.4)";
+                    ctx.beginPath();
+                    ctx.arc(renderX + b.width / 2, 370 - b.height + 80, 35, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = "#475569";
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(renderX + b.width / 2, 370 - b.height + 80, 35, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    // Massive Columns
+                    ctx.fillStyle = "#1e293b";
+                    ctx.fillRect(renderX + 15, 370 - b.height, 12, b.height);
+                    ctx.fillRect(renderX + b.width - 27, 370 - b.height, 12, b.height);
+                }
+
+                // Fortified watchtower glowing flame beacon overlay
+                if (b.name === "Fortified Watchtower") {
+                    ctx.fillStyle = "rgba(249,115,22,0.6)";
+                    ctx.beginPath();
+                    ctx.arc(renderX + b.width/2, 370 - b.height - 5, 20 + Math.random()*10, 0, Math.PI*2);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = "#1e293b";
+                    ctx.fillRect(renderX + b.width/2 - 10, 370 - b.height, 20, 10);
+                }
+            });
+
+            // Ground Track
+            ctx.fillStyle = "#2c1e15"; 
+            ctx.fillRect(0, 370, canvas.width, 30);
+
+            // Flickering Street Lamp Radial Lights
+            streetLamps.forEach(lampX => {
+                const rx = lampX - cameraX;
+                const flickerScale = 0.85 + Math.random() * 0.15;
+                
+                // Bright Warm cone overlay gradient
+                const grad = ctx.createRadialGradient(rx, 220, 5, rx, 350, 160);
+                grad.addColorStop(0, `rgba(253,224,71,${0.4 * flickerScale})`);
+                grad.addColorStop(1, "rgba(253,224,71,0)");
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.moveTo(rx, 220);
+                ctx.lineTo(rx - 140, 370);
+                ctx.lineTo(rx + 140, 370);
+                ctx.closePath();
+                ctx.fill();
+
+                // Post and head lamp
+                ctx.fillStyle = "#0f172a";
+                ctx.fillRect(rx - 3, 220, 6, 150);
+                ctx.fillRect(rx - 8, 215, 16, 8);
+                ctx.fillStyle = "#facc15";
+                ctx.fillRect(rx - 4, 223, 8, 8);
+            });
+        } else {
+            // If inside any building interiors
+            if (currentLocation === "tavern") {
+                drawTavernInterior();
+            } else if (currentLocation === "cathedral") {
+                drawCathedralInterior();
+            } else if (currentLocation === "watchtower") {
+                drawWatchtowerInterior();
+            }
+
+            // Render interior ground
+            ctx.fillStyle = "#110b07";
+            ctx.fillRect(0, 370, canvas.width, 30);
+        }
+
+        if (!player) return;
+
+        // Bullets
+        ctx.fillStyle = "#fef08a";
+        bullets.forEach(b => {
+            if (b.isCannonball) {
+                ctx.fillStyle = "#4b5563"; // cannon shell color
+                ctx.beginPath();
+                ctx.arc(b.x - cameraX, b.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                ctx.fillStyle = "#fef08a";
+                ctx.fillRect(b.x - cameraX, b.y, b.width, b.height);
+            }
+        });
+
+        // Barricades
+        barricades.forEach(b => {
+            if (b.location !== currentLocation) return;
+            ctx.fillStyle = "#78350f"; 
+            ctx.fillRect(b.x - cameraX, b.y, b.width, b.height);
+            ctx.fillStyle = "#451a03"; 
+            ctx.fillRect(b.x - cameraX, b.y + 12, b.width, 4);
+            ctx.fillRect(b.x - cameraX, b.y + 35, b.width, 4);
+        });
+
+        // Render Zombies
+        zombies.forEach(z => {
+            if (z.location !== currentLocation) return;
+
+            let zombieColor = "#475569"; 
+            if (z.type === "runner") zombieColor = "#991b1b"; 
+            if (z.type === "bomber") zombieColor = "#166534"; 
+            if (z.type === "zapper") zombieColor = "#1e293b"; 
+
+            if (z.flashTimer > 0) {
+                ctx.fillStyle = "#dc2626"; 
+                z.flashTimer--;
+            } else if (z.stunTimer > 0) {
+                ctx.fillStyle = "#c084fc"; 
+            } else {
+                ctx.fillStyle = zombieColor;
+            }
+            ctx.fillRect(z.x - cameraX, z.y, z.width, z.height);
+
+            if (z.type === "bomber") {
+                ctx.fillStyle = "#b91c1c";
+                ctx.fillRect(z.x - cameraX + (z.x < player.x ? z.width - 6 : -4), z.y + 15, 10, 18);
+                ctx.fillStyle = "#facc15"; 
+                ctx.fillRect(z.x - cameraX + (z.x < player.x ? z.width + 1 : -7), z.y + 12, 2, 3);
+            } else if (z.type === "zapper") {
+                ctx.fillStyle = "#64748b";
+                ctx.fillRect(z.x - cameraX + 2, z.y + 12, z.width - 4, 18);
+                ctx.fillStyle = "#475569"; 
+                ctx.fillRect(z.x - cameraX - 2, z.y - 6, z.width + 4, 8);
+            }
+
+            ctx.fillStyle = z.stunTimer > 0 ? "#c084fc" : "#ef4444"; 
+            ctx.fillRect(z.x - cameraX + (z.x < player.x ? z.width - 8 : 4), z.y + 10, 4, 4);
+
+            if (z.hp < z.maxHp) {
+                const barWidth = 30;
+                const barHeight = 4;
+                const hpPercentage = Math.max(0, z.hp / z.maxHp);
+                ctx.fillStyle = "#1c1917";
+                ctx.fillRect(z.x - cameraX + (z.width - barWidth) / 2, z.y - 10, barWidth, barHeight);
+                ctx.fillStyle = z.type === "zapper" ? "#60a5fa" : "#f87171";
+                ctx.fillRect(z.x - cameraX + (z.width - barWidth) / 2, z.y - 10, barWidth * hpPercentage, barHeight);
+            }
+        });
+
+        // Particles
+        particles.forEach(p => { 
+            ctx.fillStyle = p.color + p.alpha + ")"; 
+            ctx.beginPath(); 
+            ctx.arc(p.x - cameraX, p.y, p.radius, 0, Math.PI * 2); 
+            ctx.fill(); 
+        });
+
+        // Outlined Floating Damage Indicators
+        ctx.font = "bold 13px 'Courier New', monospace";
+        floatingTexts.forEach(ft => {
+            ctx.fillStyle = ft.color;
+            ctx.strokeStyle = "rgba(0,0,0,0.8)";
+            ctx.lineWidth = 3;
+            ctx.strokeText(ft.text, ft.x - cameraX, ft.y);
+            ctx.fillText(ft.text, ft.x - cameraX, ft.y);
+        });
+
+        // Chaplain Holy Crucifix shield bubble
+        if (player.wardTimer > 0) {
+            ctx.strokeStyle = "rgba(192,132,252,0.85)";
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(player.x - cameraX + player.width/2, player.y + player.height/2, 110, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            ctx.fillStyle = "rgba(192,132,252,0.15)";
+            ctx.beginPath();
+            ctx.arc(player.x - cameraX + player.width/2, player.y + player.height/2, 110, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Regiment Uniform Coating Colors
+        let coatColor = "#1e3a8a"; 
+        if (currentClass === 'officer') coatColor = "#991b1b"; 
+        if (currentClass === 'sapper') coatColor = "#292524";  
+        if (currentClass === 'medic') coatColor = "#065f46";   
+        if (currentClass === 'cuirassier') coatColor = "#334155"; 
+        if (currentClass === 'chaplain') coatColor = "#0f172a"; 
+        if (currentClass === 'seaman') coatColor = "#cbd5e1"; 
+
+        ctx.fillStyle = coatColor; 
+        ctx.fillRect(player.x - cameraX, player.y + 15, player.width, 20);
+
+        if (currentClass === 'chaplain') {
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(player.x - cameraX + 8, player.y + 15, player.width - 16, 3);
+        }
+
+        if (currentClass === 'seaman') {
+            ctx.fillStyle = "#1e3a8a"; 
+            ctx.fillRect(player.x - cameraX, player.y + 20, player.width, 3);
+            ctx.fillRect(player.x - cameraX, player.y + 28, player.width, 3);
+        }
+
+        if (currentClass === 'cuirassier') {
+            ctx.fillStyle = "#94a3b8"; 
+            ctx.fillRect(player.x - cameraX + 3, player.y + 15, player.width - 6, 18);
+            ctx.fillStyle = "#f1f5f9"; 
+            ctx.fillRect(player.x - cameraX + 6, player.y + 17, 3, 14);
+            ctx.fillStyle = "#b45309"; 
+            ctx.fillRect(player.x - cameraX + 2, player.y + 14, player.width - 4, 2);
+        }
+
+        ctx.fillStyle = currentClass === 'seaman' ? "#1e3a8a" : "#f3f4f6"; 
+        ctx.fillRect(player.x - cameraX, player.y + 35, player.width, 15);
+        
+        ctx.fillStyle = "#fbcfe8"; 
+        ctx.fillRect(player.x - cameraX + 5, player.y + 3, player.width - 10, 12);
+
+        if (currentClass === 'cuirassier') {
+            ctx.fillStyle = "#d97706"; 
+            ctx.fillRect(player.x - cameraX + 2, player.y - 12, player.width - 4, 15);
+            ctx.fillStyle = "#b91c1c";
+            ctx.fillRect(player.x - cameraX + (player.facing === 1 ? -4 : player.width), player.y - 10, 4, 18);
+        } else if (currentClass === 'seaman') {
+            ctx.fillStyle = "#ffffff"; 
+            ctx.fillRect(player.x - cameraX - 1, player.y - 4, player.width + 2, 7);
+            ctx.fillStyle = "#1e3a8a"; 
+            ctx.fillRect(player.x - cameraX - 1, player.y + 1, player.width + 2, 2);
+        } else if (currentClass === 'chaplain') {
+            ctx.fillStyle = "#020617"; 
+            ctx.fillRect(player.x - cameraX - 4, player.y - 4, player.width + 8, 4);
+            ctx.fillRect(player.x - cameraX + 3, player.y - 12, player.width - 6, 8);
+        } else {
+            ctx.fillStyle = player.buffed ? "#fbbf24" : "#1e293b"; 
+            ctx.fillRect(player.x - cameraX + 2, player.y - 12, player.width - 4, 15);
+        }
+
+        if (player.isSwinging) {
+            ctx.strokeStyle = currentClass === 'sapper' ? "#9ca3af" : (currentClass === 'cuirassier' ? "#cbd5e1" : "#f3f4f6");
+            ctx.lineWidth = currentClass === 'cuirassier' ? 5 : 4; 
+            ctx.beginPath();
+            let swingRadius = currentClass === 'sapper' ? 40 : (currentClass === 'cuirassier' ? 55 : 48);
+            if (player.facing === 1) {
+                ctx.arc(player.x - cameraX + player.width, player.y + 25, swingRadius, -Math.PI / 4, Math.PI / 4);
+            } else {
+                ctx.arc(player.x - cameraX, player.y + 25, swingRadius, Math.PI, Math.PI * 1.5);
+            }
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = "#78350f";
+            const weaponType = classConfigurations[currentClass].primary;
+            if (weaponType === 'musket') {
+                ctx.fillRect(player.x - cameraX + (player.facing === 1 ? 15 : -10), player.y + 20, 25, 6);
+            } else if (weaponType === 'pistol') {
+                ctx.fillRect(player.x - cameraX + (player.facing === 1 ? 15 : -5), player.y + 20, 12, 5);
+            } else if (weaponType === 'blunderbuss') {
+                ctx.fillStyle = "#475569";
+                ctx.fillRect(player.x - cameraX + (player.facing === 1 ? 14 : -12), player.y + 20, 18, 6);
+                ctx.fillStyle = "#d97706"; 
+                ctx.fillRect(player.x - cameraX + (player.facing === 1 ? 30 : -14), player.y + 18, 2, 10);
+            } else if (currentClass === 'cuirassier') {
+                ctx.fillStyle = "#94a3b8"; 
+                ctx.fillRect(player.x - cameraX + (player.facing === 1 ? player.width - 4 : -2), player.y + 6, 6, 21);
+                ctx.fillStyle = "#d97706"; 
+                ctx.fillRect(player.x - cameraX + (player.facing === 1 ? player.width - 7 : -5), player.y + 23, 12, 4);
+            }
+        }
+
+        // Draw Minimal Mini-Map HUD Frame
+        drawMiniMap();
+
+        // Render immersive full-screen blackout transition fade effect
+        if (transitionFade > 0) {
+            ctx.fillStyle = `rgba(0,0,0,${transitionFade / 30})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+    }
+
+    window.backToMenu = function() {
+        player = null; 
+        document.getElementById("game-over").classList.add("hidden");
+        document.getElementById("menu-screen").classList.remove("hidden");
+    };
+
+    // Loop Runner
+    function gameLoop() {
+        update(); 
+        draw(); 
+        requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+</script>
+</body>
+</html>
+```
